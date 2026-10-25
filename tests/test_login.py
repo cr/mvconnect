@@ -5,11 +5,11 @@ The fake device has passwords of its own (test_pages.PASSWORDS); the real ones a
 import struct
 
 import pytest
+from expect import has, line_with
+from test_pages import COUNTS, PASSWORDS, SHUNT, FakeShunt
 
 from mvconnect.frame import KIND_REQUEST
 from mvconnect.masterbus import LOGIN_LEVELS, MasterBus, Number
-from expect import has, line_with
-from test_pages import COUNTS, PASSWORDS, SHUNT, FakeShunt
 
 
 @pytest.fixture

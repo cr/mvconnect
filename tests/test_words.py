@@ -59,7 +59,8 @@ def test_an_exact_index_picks_that_and_nothing_else():
 def test_a_name_picks_the_values_of_that_name_and_those_whose_words_start_so():
     assert pick("date") == [3, 4]  # names repeat within a page
     assert pick("Battery", "type") == [2]  # typed as two words
-    assert pick("battery") == [0, 1, 2, 13, 14, 15]  # the long name, the group Battery's values, Battery..., in table order
+    # the long name, the group Battery's values, Battery..., in table order
+    assert pick("battery") == [0, 1, 2, 13, 14, 15]
     assert pick("battery", "low") == [14, 15]  # Battery pre low has words starting with battery and low too
     assert pick("amp=full") == [10]  # a name with '=' in it is just a name
 
@@ -78,7 +79,8 @@ def test_an_exact_group_name_picks_its_values_and_nothing_else():
 
 
 def test_otherwise_every_word_must_start_a_word_of_name_label_or_group():
-    assert pick("batt") == [0, 1, 2, 8, 13, 14, 15]  # names, the long name, the Battery groups; BattTempComp by its case split
+    # names, the long name, the Battery groups; BattTempComp by its case split
+    assert pick("batt") == [0, 1, 2, 8, 13, 14, 15]
     assert pick("temp") == [7, 8]  # inside AmbTempDerating and BattTempComp, at a case change
     assert pick("comp") == [8]
     assert pick("derat") == [7]

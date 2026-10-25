@@ -3,11 +3,10 @@
 import time
 
 import pytest
-
 from expect import logged, mentions
 
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_REPLY, KIND_REQUEST, Address, Frame
-from mvconnect.masterbus import AnnounceInfo, HOST_ADDRESS, MasterBus
+from mvconnect.masterbus import HOST_ADDRESS, AnnounceInfo, MasterBus
 
 # Announcements captured on a live bus
 ANNOUNCEMENTS = {
@@ -145,6 +144,7 @@ def test_a_frame_queued_in_time_is_handed_over_however_late_it_is_looked_for():
 
 def test_a_kill_or_a_hangup_also_waits_until_the_whole_text_is_written(monkeypatch):
     import signal
+
     from mvconnect.masterbus import uninterrupted
     got, before = [], signal.getsignal(signal.SIGTERM)
     signal.signal(signal.SIGTERM, lambda signum, frame: got.append(signum))
@@ -209,6 +209,7 @@ def test_identity_string_and_number():
 
 def test_ambiguous_device_name_is_an_error(caplog):
     import logging
+
     from mvconnect.system import AddressError, System
     link = FakeLink()
     bus = MasterBus(link, reply_timeout=0.05).open()

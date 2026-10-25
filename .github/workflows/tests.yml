@@ -1,8 +1,8 @@
 # The tests run on Linux, macOS and Windows, each on the oldest Python mvconnect supports and on the latest
-# stable one, with the latest stable dependencies; and on Linux with the oldest Python and every dependency at
+# stable one (on Windows the newest that hidapi has a wheel for), with the latest stable dependencies; and on Linux with the oldest Python and every dependency at
 # the oldest version pyproject.toml allows, fireaid's own floor for Fire included. The oldest versions are read
 # from pyproject.toml (tools/floors.py), so a raised floor is what CI tests. The tests run against fake
-# devices: no MasterBus USB Link is needed.
+# devices: no MasterBus USB Link is needed. ruff checks the code first.
 # The server's state needs Unix sockets, so its tests skip on Windows, and the type check runs elsewhere. A
 # weekly run catches a new release of a dependency.
 name: tests
@@ -17,6 +17,17 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - run: python -m pip install --quiet ruff
+      - run: ruff check
+
   floor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -36,6 +47,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["${{ needs.floor.outputs.python }}", "3.x"]
+        exclude:
+          - os: windows-latest
+            python: "3.x"
+        include:
+          # hidapi ships no Windows wheel for Python 3.15 yet, and its source build fails there: the newest
+          # Python with a wheel stands in for the latest on Windows until it does.
+          - os: windows-latest
+            python: "3.14"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

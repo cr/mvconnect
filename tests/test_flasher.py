@@ -11,13 +11,25 @@ hardware; the CLI keeps the write path disabled.
 from pathlib import Path
 
 import pytest
-
 from expect import logged, mentions
 
 from mvconnect import flasher
 from mvconnect.firmware import META_END, META_START, Firmware, Meta
-from mvconnect.flasher import (ACK_KIND, FLASH_KIND, NAK_KIND, SEL_BANK_CLOSE, SEL_BANK_SELECT, SEL_DATA,
-                          SEL_DONE, SEL_PROCESSOR, FlashError, crc16_ccitt, flash, plan, rehearse_flash)
+from mvconnect.flasher import (
+    ACK_KIND,
+    FLASH_KIND,
+    NAK_KIND,
+    SEL_BANK_CLOSE,
+    SEL_BANK_SELECT,
+    SEL_DATA,
+    SEL_DONE,
+    SEL_PROCESSOR,
+    FlashError,
+    crc16_ccitt,
+    flash,
+    plan,
+    rehearse_flash,
+)
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import Device, MasterBus
 
@@ -275,7 +287,8 @@ def test_a_data_frame_without_its_answer_is_not_sent_again():
     boot = Lossy()
     with pytest.raises(FlashError):
         flash(run(boot), Device(Address(0x0A, 0x1062B)), fw, erase_size=0x20, fill_value=0xFF)
-    assert [f.address.hi for f in boot.received if f.kind == FLASH_KIND].count(SEL_DATA) == 1  # the block is redone whole
+    # the block is redone whole
+    assert [f.address.hi for f in boot.received if f.kind == FLASH_KIND].count(SEL_DATA) == 1
 
 
 def test_a_bank_close_without_a_crc_aborts():

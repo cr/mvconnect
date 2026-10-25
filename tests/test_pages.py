@@ -4,14 +4,13 @@ import dataclasses
 import struct
 
 import pytest
-
 from expect import has, line_with, logged, mentions
 
 from mvconnect import cache
-from mvconnect.system import AddressError, Refused, System
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
-from mvconnect.pages import PAGES, PAGE_BY_NAME, PageReader, Value, table_from_dict, table_to_dict
+from mvconnect.pages import PAGE_BY_NAME, PAGES, PageReader, Value, table_from_dict, table_to_dict
+from mvconnect.system import AddressError, Refused, System
 
 SHUNT = Address(0x1B, 0x0CAD9)
 ELSEWHERE = Address(0x0A, 0x1062B)  # a charger the fake bus does not have
@@ -224,7 +223,7 @@ def test_read_item_and_group(bus):
     assert v.format(12.0) == "12"
     g = r.read_group(cfg, 1, n_values=3)
     assert (g.name, g.values) == ("Battery", [1, 2])
-    assert r.read_group(cfg, 1).values == [1, 2]  # the group says it has two members; the garbage third never gets asked for  # without the bound only repeats end it
+    assert r.read_group(cfg, 1).values == [1, 2]  # it says two members: the garbage third is never asked for
 
 
 def test_item_format_precision():
@@ -554,7 +553,8 @@ def test_write_string_in_chunks_with_a_terminator(bus):
 
 
 @pytest.mark.parametrize("content", ["{", "[]", '{"pages": 1}', '{"pages": {"config": {"page": "config"}}}',
-                                     '{"pages": {"config": {"page": "config", "values": [{"bogus": 1}], "groups": []}}}'])
+                                     '{"pages": {"config": {"page": "config", "values": [{"bogus": 1}], '
+                                     '"groups": []}}}'])
 def test_a_malformed_cache_is_read_again_not_a_crash(bus, content):
     system = System(bus)
     device = system.device("1b:0cad9", timeout=0.02)
@@ -906,7 +906,7 @@ def test_a_device_value_s_write_is_judged_by_the_entry_the_device_holds(bus):
 
 
 def test_none_clears_a_target_whose_entries_have_no_empty_one(bus):
-    """The CHG lists an empty entry only while no target is set; writing the maximum, just past the entries, clears it."""
+    """The CHG lists an empty entry only while no target is set; the maximum, just past the entries, clears it."""
     system = System(bus)
     device = system.device("msh", timeout=0.02)
     CFG_ITEMS[5].update({0x07: 2.0, (0x20, 0): address_bytes(SHUNT), (0x20, 1): address_bytes(ELSEWHERE)})

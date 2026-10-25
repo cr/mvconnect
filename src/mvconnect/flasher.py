@@ -478,7 +478,7 @@ def rehearse_flash(bus: MasterBus, device: Device, firmware: Firmware, *, erase_
         line = f"  would send  {frame}  dlc {len(frame.data)}  -> expect {expect}"
         (logger.debug if data_frame else logger.info)(line)
 
-    for attempt in range(3):  # a device that does not announce itself may be in flash mode: no guess either way
+    for _attempt in range(3):  # a device that does not announce itself may be in flash mode: no guess either way
         try:
             already = _announcement(bus, device.address).flash_mode
             break

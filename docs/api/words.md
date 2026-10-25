@@ -69,7 +69,7 @@ def select(
     words: Iterable[object],
     key: Callable[[T], str],
     name: Callable[[T], str],
-    labels: Callable[[T], Iterable[str]] = lambda i: ()
+    labels: Callable[[T], Iterable[str]] = lambda _: ()
 ) -> list[T]
 ```
 

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import struct
 
-from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.firmware import Loader
 from mvconnect.flasher import ACK_KIND, FLASH_KIND, NAK_KIND, SEL_NAMES
+from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import AnnounceInfo, Command, Identity, Number, login_level_name, version_text
 from mvconnect.pages import MASTER_ADDRESS_TYPE, PAGES, Attribute, entry_address
 

@@ -3,8 +3,21 @@
 The command line is mvconnect, in mvconnect.cli, which the library reference leaves out.
 """
 
-from mvconnect import cache, decode, download, firmware, flasher, frame, hidlink, masterbus, pages, preflight, state, \
-    system, words
+from mvconnect import (
+           cache,
+           decode,
+           download,
+           firmware,
+           flasher,
+           frame,
+           hidlink,
+           masterbus,
+           pages,
+           preflight,
+           state,
+           system,
+           words,
+)
 from mvconnect.frame import Address, Frame, pack_report, unpack_report
 from mvconnect.hidlink import HidLink, LinkError, find_links
 from mvconnect.masterbus import Device, MasterBus

@@ -3,8 +3,8 @@
 import struct
 
 import pytest
-
 from expect import has
+
 from mvconnect.decode import describe, line
 from mvconnect.frame import Address, Frame
 from mvconnect.masterbus import HOST_ADDRESS
@@ -42,7 +42,8 @@ def f32(v):
         # the frame MasterAdjust sends after writing an eventable value, to the next index: its own address
         (0x37, bytes([0x53, 0x00, 0x14, 0x60, 0xA7, 0x01]), ("config", "#83", "14:1a760")),
         # the entries of a device value: addresses, or none
-        (0x18, bytes([0x20, 0x52, 0x00, 0x01, 0x1B, 0xD9, 0xCA, 0x00]), ("config", "#82", "targets", "[1]", "1b:0cad9")),
+        (0x18, bytes([0x20, 0x52, 0x00, 0x01, 0x1B, 0xD9, 0xCA, 0x00]),
+         ("config", "#82", "targets", "[1]", "1b:0cad9")),
         (0x18, bytes([0x20, 0x52, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF]), ("config", "#82", "targets", "[0]", "none")),
         (0x38, bytes([0x0F, 0x53, 0x00, 0x01]), ("config", "#83", "commands", "[1]")),
         (0x31, bytes([0x28, 0x03, 0x00]), ("monitor", "#3", "name")),

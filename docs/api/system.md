@@ -329,7 +329,7 @@ A value the device does not answer for is None, with a warning.
 def read_options(device: Device, table: PageTable, value: Value) -> list[str]
 ```
 
-Return the entries of *value*, a list, device or command value of *table*'s page, as the device lists them now.
+Return the entries of *value*, a list, device or command value of *table*'s page, as they are now.
 
 The entries are read from the device, not taken from the table; see PageReader.read_options().
 

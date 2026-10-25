@@ -96,7 +96,7 @@ ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does 
 # After writing an eventable value, MasterAdjust sends one more frame to the NEXT index: kind =
 # page.read, DLC 6 [idx+1 as u16, 0x14, the low three bytes of its own address]. mvconnect does not
 # send it yet (see Value.eventable).
-MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView); data[2] of the frame above
+MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
              VIS_TEXT: "text", VIS_COUNTER: "counter", VIS_DATE: "date", VIS_DEVICE: "device",
              VIS_COMMAND: "command"}

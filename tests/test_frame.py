@@ -1,11 +1,18 @@
 """Frame codec pinned to bytes captured from a live bus."""
 
 import pytest
-
 from expect import mentions
 
-from mvconnect.frame import (KIND_ANNOUNCE, KIND_ENUMERATE, KIND_REPLY, KIND_REQUEST, Address, Frame, pack_report,
-                        unpack_report)
+from mvconnect.frame import (
+    KIND_ANNOUNCE,
+    KIND_ENUMERATE,
+    KIND_REPLY,
+    KIND_REQUEST,
+    Address,
+    Frame,
+    pack_report,
+    unpack_report,
+)
 
 # One input report as read from the link: one record, stale data in the other slots.
 CAPTURED = bytes.fromhex(
