@@ -1,0 +1,101 @@
+# The tests run on Linux, macOS and Windows, each on the oldest Python mvconnect supports and on the latest
+# stable one, with the latest stable dependencies; and on Linux with the oldest Python and every dependency at
+# the oldest version pyproject.toml allows, fireaid's own floor for Fire included. The oldest versions are read
+# from pyproject.toml (tools/floors.py), so a raised floor is what CI tests. The tests run against fake
+# devices: no MasterBus USB Link is needed.
+# The server's state needs Unix sockets, so its tests skip on Windows, and the type check runs elsewhere. A
+# weekly run catches a new release of a dependency.
+name: tests
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"  # Mondays
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python: ${{ steps.python.outputs.python }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: python
+        run: echo "python=$(python3 tools/floors.py --python)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: floor
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20  # the suite takes under a minute; a hung test is cut short
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["${{ needs.floor.outputs.python }}", "3.x"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: hidapi's build dependencies, where no wheel fits
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev libudev-dev
+      - run: python -m pip install --quiet --upgrade pip
+      - run: python -m pip install --quiet --upgrade --editable ".[test]"
+      - run: python -m pytest -q
+      - run: python -m mypy
+        if: runner.os != 'Windows'
+
+  test-min:
+    needs: floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ needs.floor.outputs.python }}
+      - name: hidapi's build dependencies, where no wheel fits
+        run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev libudev-dev
+      - run: python -m pip install --quiet --upgrade pip packaging
+      - name: the floors in pyproject.toml
+        run: |
+          python tools/floors.py | tee floors.txt
+          python -m pip install --quiet --editable ".[test]" --constraint floors.txt
+      - name: fireaid's own floors
+        run: |
+          python tools/floors.py fireaid | tee fireaid-floors.txt
+          python -m pip install --quiet --requirement fireaid-floors.txt
+      - run: python -m pip list
+      - run: python -m pytest -q
+      - run: python -m mypy
+
+  # What a user installs: the source archive and the wheel built, the wheel installed on its own and run, and
+  # the library reference in docs/api as the docstrings make it.
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - name: hidapi's build dependencies, where no wheel fits
+        run: sudo apt-get update && sudo apt-get install -y libusb-1.0-0-dev libudev-dev
+      - run: python -m pip install build
+      - run: python -m build
+      - name: the wheel, installed alone, answers
+        run: |
+          python -m venv /tmp/wheel
+          /tmp/wheel/bin/pip install dist/*.whl
+          /tmp/wheel/bin/mvconnect --help
+          /tmp/wheel/bin/mvconnect data --help
+      - name: docs/api is current
+        run: |
+          python -m pip install -e '.[docs]'
+          python tools/build_docs.py
+          git diff --exit-code docs/api

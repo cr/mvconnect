@@ -1,0 +1,14 @@
+# Keeps the actions the workflow uses up to date: once a week, one pull request for all that have a new version.
+#
+# Not the pip dependencies: for a range such as rich>=13.5, Dependabot raises the floor to the newest version,
+# which would leave the oldest versions untested. The test workflow runs weekly against the latest instead.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

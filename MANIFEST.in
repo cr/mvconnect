@@ -1,0 +1,7 @@
+# The source archive holds what it takes to test and document the package, not only to install it.
+graft tests
+graft notes
+graft docs
+graft tools
+include Makefile
+global-exclude __pycache__ *.py[cod]

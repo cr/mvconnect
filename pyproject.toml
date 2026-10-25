@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mvconnect"
+version = "0.1.0"
+description = "Talk to a Mastervolt MasterBus system through the MasterBus USB Link"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Christiane Ruetten", email = "cr@23bit.net"}]
+license = "GPL-3.0-only"
+license-files = ["LICENSE.md"]
+keywords = ["mastervolt", "masterbus", "can", "battery", "charger", "marine", "hid"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: System :: Hardware",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "hidapi>=0.14.0.post4",  # open_path, read with a timeout, and from post4 the report descriptor
+    "fireaid>=0.3.1",  # Remote(setup=); an unknown flag refused before the command runs
+    "rich>=13.5",  # TaskProgressColumn, MofNCompleteColumn, and markup.escape of a trailing backslash
+    "curl_cffi>=0.6",  # Session(impersonate="chrome")
+]
+
+[project.urls]
+Homepage = "https://github.com/cr/mvconnect"
+Issues = "https://github.com/cr/mvconnect/issues"
+Documentation = "https://github.com/cr/mvconnect/blob/main/docs/api/README.md"
+
+[project.optional-dependencies]
+test = ["pytest", "mypy"]
+docs = ["pydoc-markdown"]  # make docs: the library reference from the docstrings
+
+[project.scripts]
+mvconnect = "mvconnect.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+files = ["src/mvconnect"]
+python_version = "3.11"
+ignore_missing_imports = true  # hidapi, fireaid and rich's extras ship no type information
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["unix: needs Unix sockets, which the server's state uses; skipped on Windows"]
+filterwarnings = [
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:fire",
+]
