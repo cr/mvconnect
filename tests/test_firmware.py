@@ -329,7 +329,7 @@ def test_extract_with_password(tmp_path):
         zf.writestr("All_Firmware/../../escape.hex", "dropped")  # out of the library, past its top folder
         zf.writestr("All_Firmware/../../escape.txt", "dropped")
     out = extract(bundle, tmp_path / "hex", None)
-    assert [str(p.relative_to(tmp_path / "hex")) for p in out] == ["FW_July/Mastershunt/Mastershunt 500/MSH_V2_1.hex"]
+    assert [p.relative_to(tmp_path / "hex").as_posix() for p in out] == ["FW_July/Mastershunt/Mastershunt 500/MSH_V2_1.hex"]
     assert (tmp_path / "hex/FW_July/Mastershunt/! MasterShunt note !.txt").read_text() == "77020100\tMasterShunt 500"
     assert not (tmp_path / "hex/FW_July/Mastershunt/x.bin").exists()
     assert not list(tmp_path.parent.rglob("escape.*"))  # nothing written outside the library
