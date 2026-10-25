@@ -21,7 +21,6 @@ def test_ctrl_c_ends_a_command_with_130_not_a_traceback(monkeypatch, caplog):
     import logging
 
     import pytest
-
     from expect import logged
 
     def interrupted(component, **options):
@@ -66,6 +65,7 @@ def test_a_server_open_to_other_computers_runs_and_leaves_the_warning_to_fireaid
     import sys
 
     from expect import logged
+
     from mvconnect import state
     started, at_exit = [], []
 

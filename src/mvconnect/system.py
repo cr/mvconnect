@@ -21,20 +21,31 @@ listing keeps the grouping.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 import queue
 import time
 from collections.abc import Callable, Iterable, Iterator
-import dataclasses
 from dataclasses import dataclass, field
 
 from mvconnect import cache
 from mvconnect.frame import Address, Frame
 from mvconnect.hidlink import LinkError
 from mvconnect.masterbus import Device, MasterBus, Progress, sendable
-from mvconnect.pages import (LIVE, PAGES, PAGE_BY_NAME, Page, PageReader, PageTable, VIS_ACTION, VIS_COUNTER,
-                             VIS_DATE, VIS_DEVICE, Value)
+from mvconnect.pages import (
+    LIVE,
+    PAGE_BY_NAME,
+    PAGES,
+    VIS_ACTION,
+    VIS_COUNTER,
+    VIS_DATE,
+    VIS_DEVICE,
+    Page,
+    PageReader,
+    PageTable,
+    Value,
+)
 from mvconnect.words import fold, select
 
 logger = logging.getLogger(__name__)
@@ -315,7 +326,8 @@ class System:
             logger.debug(f"{device.address}: pages {[p.name for p in pages]} from the cache")
             return {p.name: cached[p.name] for p in pages}
         logger.debug(f"{device.address}: reading pages {[p.name for p in pages if not cached or p.name not in cached]} "
-                     f"from the device" + ("" if self.use_cache else " (cache off)") + (" (refreshing)" if afresh else ""))
+                     "from the device" + ("" if self.use_cache else " (cache off)")
+                     + (" (refreshing)" if afresh else ""))
         tables = dict(cached or {})
         totals: dict[str, tuple[int, int]] = {}
 
@@ -378,7 +390,7 @@ class System:
     # -- single values, through the same seam, so that the server can serve them
 
     def read_options(self, device: Device, table: PageTable, value: Value) -> list[str]:
-        """Return the entries of *value*, a list, device or command value of *table*'s page, as the device lists them now.
+        """Return the entries of *value*, a list, device or command value of *table*'s page, as they are now.
 
         The entries are read from the device, not taken from the table; see PageReader.read_options().
         """

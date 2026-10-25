@@ -24,7 +24,7 @@ from mvconnect import cache
 from mvconnect.frame import Address, Frame
 from mvconnect.hidlink import LinkError
 from mvconnect.masterbus import Device, MasterBus, login_level_name, winding_down
-from mvconnect.pages import PAGES, PAGE_BY_NAME, Page, PageTable, Value, table_from_dict, table_to_dict
+from mvconnect.pages import PAGE_BY_NAME, PAGES, Page, PageTable, Value, table_from_dict, table_to_dict
 from mvconnect.system import AddressError, System, check_identity
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ class StateServer:
                     enumerated = time.monotonic()
                 try:
                     conn, _ = self.listener.accept()
-                except socket.timeout:
+                except TimeoutError:
                     continue
                 except OSError as e:  # out of file descriptors, a client gone while queued: the next may do
                     logger.warning(f"bus state: accepting a client failed: {e}")
@@ -126,12 +126,12 @@ class StateServer:
             except OSError:
                 pass
             self._stop.set()  # a stream ends at its next look, should serve_forever() end otherwise
-            for thread, conn in clients:
+            for _thread, conn in clients:
                 try:
                     conn.shutdown(socket.SHUT_RDWR)  # a client waiting to send its next request is let go
                 except OSError:
                     pass
-            for thread, conn in clients:
+            for thread, _conn in clients:
                 thread.join(STREAM_TIMEOUT)
             self._ended.set()
 
@@ -349,7 +349,7 @@ class StateSystem(System):
             raise ERRORS.get(error.get("type"), ValueError)(error.get("message", "state error"))
         return reply["result"]
 
-    def devices(self, timeout: float = 1.5, progress=None, refresh: bool = False) -> list[Device]:
+    def devices(self, timeout: float = 1.5, progress=None, refresh: bool = False) -> list[Device]:  # noqa: ARG002
         """Ask the server for the devices; see System.devices(). *progress* is not used."""
         if self._devices is None or refresh:
             got = self.call("devices", timeout=timeout, refresh=refresh)
@@ -391,7 +391,7 @@ class StateSystem(System):
         acknowledged, after = self.call("login", device=encode_device(device), level=level, password=password)
         return bool(acknowledged), after
 
-    def tables(self, device: Device, pages: list[Page] | None = None, progress=None,
+    def tables(self, device: Device, pages: list[Page] | None = None, progress=None,  # noqa: ARG002
                afresh=None) -> dict[str, PageTable]:
         """Ask the server for the page tables, one page per request; see System.tables().
 

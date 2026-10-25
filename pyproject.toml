@@ -40,7 +40,7 @@ Issues = "https://github.com/cr/mvconnect/issues"
 Documentation = "https://github.com/cr/mvconnect/blob/main/docs/api/README.md"
 
 [project.optional-dependencies]
-test = ["pytest", "mypy"]
+test = ["pytest", "mypy", "ruff"]
 docs = ["pydoc-markdown"]  # make docs: the library reference from the docstrings
 
 [project.scripts]
@@ -60,3 +60,18 @@ markers = ["unix: needs Unix sockets, which the server's state uses; skipped on 
 filterwarnings = [
     "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:fire",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+# Errors, warnings, bugbear, unused arguments and imports, outdated syntax, import order.
+select = ["E", "F", "W", "B", "ARG", "UP", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Signal handlers and stand-ins take arguments they do not use; a test may bind a lambda or call in a default.
+"tests/*" = ["ARG", "E731", "B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mvconnect"]

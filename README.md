@@ -144,7 +144,11 @@ cached under `~/.cache/mvconnect` (`--nocache` reads them again and updates
 the cache).
 
 The protocol is what MasterAdjust 2.36 puts on the bus, as observed on the
-link and verified against live devices; the notes are in `notes/`.
+link and verified against live devices: the device list, the pages and
+their values, writes of numbers, options, texts and device targets, login
+and logout, the monitor and the server, on a MasterShunt, a ChargeMaster, an
+Alpha Pro and an EasyView. The firmware transfer is not, as said above. The
+notes are in `notes/`.
 
 mvconnect is free software under the GNU General Public License, version 3
 ([LICENSE.md](LICENSE.md)).

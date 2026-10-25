@@ -241,7 +241,7 @@ how many entries a list is read for where its maximum does not say
 
 #### MASTER\_ADDRESS\_TYPE
 
-the high field of a master's address (MasterAdjust, an EasyView); data[2] of the frame above
+the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 
 <a id="mvconnect.pages.VIS_NAMES"></a>
 

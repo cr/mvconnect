@@ -40,7 +40,7 @@ def fake_shunt_as_it_was():
     live = [getattr(test_pages, name) for name in FAKE_STATE]
     saved = copy.deepcopy(live)  # one copy, so that TABLES and CFG_ITEMS stay one dict in it too
     yield
-    for now, then in zip(live, saved):
+    for now, then in zip(live, saved, strict=True):
         _put_back(now, then)
 
 

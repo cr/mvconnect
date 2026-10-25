@@ -6,12 +6,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from mvconnect.options import typed
 from mvconnect.download import DownloadError, bundle_dir, bundle_url, cache_dir, extract, fetch
 from mvconnect.firmware import Firmware, FirmwareError, identify, version_text
 from mvconnect.firmware import library as scan_library
 from mvconnect.hidlink import LinkError
 from mvconnect.masterbus import MasterBus
+from mvconnect.options import typed
 from mvconnect.system import AddressError, System
 
 logger = logging.getLogger("mvconnect")

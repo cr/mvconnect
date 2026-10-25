@@ -157,7 +157,8 @@ def find_meta(img: bytes, base: int) -> Meta | None:
     neither packing shows the marker. Raise FirmwareError if the marker starts a record without an end or too
     short to read.
     """
-    for packing, buf, scale in (("plain", img, 1), ("low16", b"".join(img[k:k + 2] for k in range(0, len(img) - 3, 4)), 2)):
+    low16 = b"".join(img[k:k + 2] for k in range(0, len(img) - 3, 4))
+    for packing, buf, scale in (("plain", img, 1), ("low16", low16, 2)):
         i = buf.find(META_START)
         if i < 0:
             continue

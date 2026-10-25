@@ -1,20 +1,19 @@
 """The monitor: every frame the link sends or receives, locally and through the server's state."""
 
 import tempfile
-import time
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-
 from expect import has, line_with
+from test_pages import SHUNT, FakeShunt
 
 from mvconnect import state as st
 from mvconnect.frame import KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
 from mvconnect.system import System
-from test_pages import SHUNT, FakeShunt
 
 OTHER = Address(0x0A, 0x1062B)
 
@@ -44,7 +43,7 @@ def test_the_state_streams_the_traffic():
         def watch():
             frames = monitor.traffic()
             started.set()
-            for t, frame, sent in frames:
+            for _t, frame, sent in frames:
                 seen.append((frame.kind, frame.address, sent))
                 if len(seen) == 2:
                     return

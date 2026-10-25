@@ -6,16 +6,15 @@ import time
 from pathlib import Path
 
 import pytest
-
-from expect import has, line_with, mentions
-
 import test_pages
+from expect import has, line_with, mentions
+from test_pages import CFG_ITEMS, COUNTS, SHUNT, VALUES, FakeShunt
+
 from mvconnect import state as st
 from mvconnect.hidlink import LinkError
 from mvconnect.masterbus import MasterBus
 from mvconnect.pages import PAGE_BY_NAME, PageTable
 from mvconnect.system import AddressError, System
-from test_pages import CFG_ITEMS, COUNTS, SHUNT, VALUES, FakeShunt
 
 pytestmark = pytest.mark.unix
 
@@ -446,6 +445,7 @@ def test_an_error_accepting_a_client_does_not_end_the_server(short_path):
 def test_a_monitor_that_stops_reading_is_let_go_and_costs_no_memory(short_path, monkeypatch):
     import json
     import socket
+
     from mvconnect.frame import Frame
     monkeypatch.setattr(st, "STREAM_TIMEOUT", 0.2)
     server, bus, thread = serve(short_path / "state.sock")

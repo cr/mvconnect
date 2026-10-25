@@ -4,11 +4,19 @@ import dataclasses
 import struct
 
 import pytest
-
 from expect import has, mentions
 
-from mvconnect.firmware import (META_END, META_START, Firmware, FirmwareError, Meta, identify, library, parse_intel_hex,
-                           version_text)
+from mvconnect.firmware import (
+    META_END,
+    META_START,
+    Firmware,
+    FirmwareError,
+    Meta,
+    identify,
+    library,
+    parse_intel_hex,
+    version_text,
+)
 from mvconnect.frame import KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
 
@@ -320,6 +328,7 @@ def test_an_index_from_before_a_decoding_change_is_not_used(tmp_path):
 
 def test_extract_with_password(tmp_path):
     import zipfile
+
     from mvconnect.download import DownloadError, extract
     bundle = tmp_path / "b.zip"
     with zipfile.ZipFile(bundle, "w") as zf:
@@ -329,7 +338,8 @@ def test_extract_with_password(tmp_path):
         zf.writestr("All_Firmware/../../escape.hex", "dropped")  # out of the library, past its top folder
         zf.writestr("All_Firmware/../../escape.txt", "dropped")
     out = extract(bundle, tmp_path / "hex", None)
-    assert [p.relative_to(tmp_path / "hex").as_posix() for p in out] == ["FW_July/Mastershunt/Mastershunt 500/MSH_V2_1.hex"]
+    extracted = [p.relative_to(tmp_path / "hex").as_posix() for p in out]
+    assert extracted == ["FW_July/Mastershunt/Mastershunt 500/MSH_V2_1.hex"]
     assert (tmp_path / "hex/FW_July/Mastershunt/! MasterShunt note !.txt").read_text() == "77020100\tMasterShunt 500"
     assert not (tmp_path / "hex/FW_July/Mastershunt/x.bin").exists()
     assert not list(tmp_path.parent.rglob("escape.*"))  # nothing written outside the library

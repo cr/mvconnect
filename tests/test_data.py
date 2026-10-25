@@ -5,12 +5,12 @@ import logging
 import struct
 
 import pytest
-
-import mvconnect.cli as cli
 from expect import has, line_with, logged
-from mvconnect.frame import KIND_REQUEST
 from test_login import _system_on
 from test_pages import ADDRESS_FRAMES, CFG_ITEMS, ELSEWHERE, SHUNT, STRINGS, VALUES, FakeShunt, address_bytes
+
+import mvconnect.cli as cli
+from mvconnect.frame import KIND_REQUEST
 
 CFG = 0x37  # the config page's value kind: a read with DLC 2, a write with DLC 6
 

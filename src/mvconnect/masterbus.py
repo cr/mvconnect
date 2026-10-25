@@ -127,7 +127,7 @@ def uninterrupted() -> Iterator[None]:
         yield
         return
     held: list[int] = []
-    previous = {s: signal.signal(s, lambda signum, frame: held.append(signum)) for s in ENDING}
+    previous = {s: signal.signal(s, lambda signum, _frame: held.append(signum)) for s in ENDING}
     try:
         yield
     finally:

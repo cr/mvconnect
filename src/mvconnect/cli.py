@@ -31,15 +31,23 @@ from typing import NoReturn
 
 import fireaid as fire
 
-from mvconnect.options import occurrences, typed, unknown_flags
 from mvconnect import decode
+from mvconnect.frame import Address
+from mvconnect.hidlink import LinkError, describe_link, find_link
+from mvconnect.masterbus import (
+    ENDING,
+    HOST_ADDRESS,
+    LOGIN_LEVELS,
+    Ended,
+    Progress,
+    login_level_name,
+    sendable,
+    winding_down,
+)
+from mvconnect.options import occurrences, typed, unknown_flags
+from mvconnect.pages import PageTable
 from mvconnect.state import open_system
 from mvconnect.system import AddressError, Refused, Selection, System
-from mvconnect.hidlink import LinkError, describe_link, find_link
-from mvconnect.frame import Address
-from mvconnect.masterbus import (ENDING, HOST_ADDRESS, LOGIN_LEVELS, Ended, Progress, login_level_name, sendable,
-                                 winding_down)
-from mvconnect.pages import PageTable
 
 logger = logging.getLogger("mvconnect")
 
@@ -154,8 +162,14 @@ def show_progress(description: str, unit: str):
         yield log_progress(unit)
         return
 
-    from rich.progress import BarColumn, MofNCompleteColumn, Progress, TaskProgressColumn, TextColumn, \
-        TimeRemainingColumn
+    from rich.progress import (
+        BarColumn,
+        MofNCompleteColumn,
+        Progress,
+        TaskProgressColumn,
+        TextColumn,
+        TimeRemainingColumn,
+    )
 
     columns = (TextColumn("{task.description}"), BarColumn(), TaskProgressColumn(), MofNCompleteColumn(),
                TextColumn(unit), TimeRemainingColumn())
@@ -699,7 +713,7 @@ def serve_setup(debug: bool) -> None:
     atexit.register(server.shutdown)  # Ctrl-C, SIGTERM and SIGHUP end fireaid's server with an exit
 
 
-def _ended(signum, frame) -> None:
+def _ended(signum, _frame) -> None:
     """End the command on SIGTERM or SIGHUP as an exit, so that its cleanups run, a flash-mode exit among them.
 
     Raise Ended, a SystemExit with status 128 plus *signum*, which the cleanups log as the cause.

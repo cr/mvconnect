@@ -47,7 +47,7 @@ def tokens(text: str) -> list[str]:
 
 
 def select(items: Iterable[T], words: Iterable[object], key: Callable[[T], str], name: Callable[[T], str],
-           labels: Callable[[T], Iterable[str]] = lambda i: ()) -> list[T]:
+           labels: Callable[[T], Iterable[str]] = lambda _: ()) -> list[T]:
     """Return the items that *words* select, in their original order, by the rules in the module docstring.
 
     *key*, *name* and *labels* are functions that return an item's id, name and other labels; *labels*

@@ -1,11 +1,18 @@
 """The firmware command line: what it takes from the command line, and that a dry run only asks."""
 
+import struct
+
 import pytest
+from test_firmware import make_hex
+from test_flasher import FakeBootloader
+from test_pages import FakeShunt
 
 import mvconnect.cli as cli
 import mvconnect.firmware_cli as fcli
+from mvconnect.firmware import META_END, META_START
+from mvconnect.flasher import FLASH_KIND, SEL_DONE
+from mvconnect.frame import KIND_NA, KIND_REPLY, KIND_REQUEST
 from mvconnect.masterbus import MasterBus
-from test_pages import FakeShunt
 
 
 def test_numbers_come_as_text_or_as_numbers():
@@ -30,14 +37,6 @@ def test_flash_options_are_taken_as_typed(monkeypatch, command):
 
 
 # -- flash: a dry run only asks; --really enters and leaves flash mode and programs nothing
-
-import struct
-
-from test_flasher import FakeBootloader
-from test_firmware import make_hex
-from mvconnect.firmware import META_END, META_START
-from mvconnect.flasher import FLASH_KIND, SEL_DONE
-from mvconnect.frame import KIND_NA, KIND_REPLY, KIND_REQUEST
 
 STRINGS = {1: "44010500", 2: "AD15E0947", 3: "CHG Charger"}  # product, serial, product name
 
@@ -151,5 +150,6 @@ def test_really_enters_and_leaves_flash_mode_and_programs_nothing(charger):
     boot, flash = charger
     flash("--really", "--erase-size", "0x20")
     assert loader_commands(boot) == [0x83, 0x84, 0x85]  # the handshake, and the exit
-    assert [f.address.hi for f in boot.received if f.kind == FLASH_KIND] == [SEL_DONE]  # only done, which writes nothing
+    # only done, which writes nothing
+    assert [f.address.hi for f in boot.received if f.kind == FLASH_KIND] == [SEL_DONE]
     assert boot.flashed == {} and not boot.in_mode
