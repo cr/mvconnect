@@ -20,10 +20,10 @@ the command line is `mvconnect.cli`.
 The library reference, generated from the docstrings, is in
 [docs/api](docs/api/README.md); `mvconnect --help` documents the command line.
 
-mvconnect needs Python 3.11 or newer. Install the command with pipx, which
-gives it an environment of its own, or with pip into one of yours:
+mvconnect needs Python 3.11 or newer. Install it into an environment of
+yours:
 
-    pipx install git+https://github.com/cr/mvconnect
+    pip install git+https://github.com/cr/mvconnect
     mvconnect data
 
 To work on it, from a clone:
