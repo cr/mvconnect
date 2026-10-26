@@ -69,7 +69,10 @@ alpha pro` shows the "Alpha pro" groups.
 
 `--set` takes a number, an option name for a list or command value, or
 on/off; a device value takes a device among its entries by its name, type
-or address, or `none`; a text value the text. It checks the value against
+or address, or `none`; a text value the text; a date value a date written
+`YYYY-MM-DD`, which a listing shows behind the number, as it shows a
+counter's seconds as a duration (both decoded as another MasterBus
+implementation documents it, not yet confirmed on my bus). It checks the value against
 the range and the writeable flag (`--force` skips both; a device value's
 device must be among the entries, forced or not), writes it, and shows the
 value before and after;

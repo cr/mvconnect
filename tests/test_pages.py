@@ -1103,3 +1103,27 @@ def test_a_list_value_given_a_number_writes_nothing(config, bus):
         assert system.write(device, table, battery_type, "3", force=True).after == "Li-ion"
     finally:
         VALUES[0x37][2] = 3.0
+
+
+def test_date_values_show_and_take_a_date():
+    from mvconnect.pages import VIS_DATE, date_text, date_value
+    date = Value(0, visualization=VIS_DATE)
+    assert date_text(843000.0) == "2026-05-24" and date_value("2026-05-24") == 843000.0
+    assert date.format(843000.0) == "843000 (2026-05-24)"
+    assert date.parse("2026-05-24") == 843000.0 and date.parse("843000") == 843000.0
+    for no_date in (0.0, 5.0, 843000.5, float("inf"), 2026 * 416 + 13 * 32 + 1, 2026 * 416 + 0 * 32 + 1):
+        assert date_text(no_date) is None
+    assert date.format(5.0) == "5" and date.format(float("nan")) == "n/a"
+    for bad in ("2026-13-01", "2026-05", "x-y-z", "2026-05-00"):
+        with pytest.raises(ValueError):
+            date_value(bad)
+    assert Value(0).format(843000.0) == "843000"  # a number is just a number
+
+
+def test_counter_values_show_a_duration_from_a_minute_up():
+    from mvconnect.pages import VIS_COUNTER, duration_text
+    counter = Value(0, visualization=VIS_COUNTER)
+    assert duration_text(54496) == "15:08:16" and duration_text(90061) == "1d 1:01:01"
+    assert counter.format(54496.0) == "54496 (15:08:16)" and counter.format(60.0) == "60 (0:01:00)"
+    assert counter.format(59.0) == "59" and counter.format(0.0) == "0" and counter.format(61.5) == "61.5"
+    assert Value(0).format(54496.0) == "54496"

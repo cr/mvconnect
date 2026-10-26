@@ -46,6 +46,28 @@ logger = logging.getLogger(__name__)
 # This computer's address on the bus: the high field 0x14, which MasterAdjust's frames carry too, and a low
 # field of 0x1234.
 HOST_ADDRESS = Address(0x14, 0x1234)
+LINK_PRODUCT = "77030100"  # the product number of the MasterBus USB Link
+_YEAR_LETTERS = {"O": 10, "N": 11, "D": 12}  # the letters that stand for a year in a serial number
+
+
+def host_address(serial: str, product: str = LINK_PRODUCT) -> Address:
+    """Return the address this computer takes on the bus through the link with the *serial* number.
+
+    The high field is 0x14. The low field is computed from the serial number, nine characters of the form
+    'LYWWLNNNN', and the link's *product* number the way a device computes its own, so that two links get two
+    addresses. Return HOST_ADDRESS if *serial* is not of that form.
+    """
+    # The computation is documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); it reproduces
+    # the addresses of their devices, and MasterAdjust's own, which uses this product number.
+    if len(serial) != 9 or not (serial[2:4].isdigit() and serial[5:9].isdigit() and product.isdigit()):
+        return HOST_ADDRESS
+    year = _YEAR_LETTERS.get(serial[1].upper(), int(serial[1]) if serial[1].isdigit() else None)
+    if year is None:
+        return HOST_ADDRESS
+    week, number = int(serial[2:4]), int(serial[5:9])
+    groups = sum(int(product[max(0, i - 3):i]) for i in range(len(product), 0, -3))  # 3-digit groups, from the right
+    return Address(HOST_ADDRESS.hi, (number + (week + 32 * (year & 3)) * 2048 + 64 * groups) & 0x3FFFF)
+
 
 class Command(enum.IntEnum):
     """What a request (KIND_REQUEST) asks for: its first data byte."""
@@ -206,10 +228,11 @@ class NotAvailable(TimeoutError):
 class Device:
     """A device on the bus.
 
-    It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
-    *product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
-    '<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
-    address and the info bytes is filled in by MasterBus.identify().
+    It holds its *address*; the four *info* bytes of its announcement (see event_counter and flash_mode; the
+    rest of their meaning is not yet known); its *product* number such as 77020100; its *serial* number; its
+    *product_name* as the device reports it, '<type> <name>'; its hardware *revision*; and its firmware
+    *version*, 'major.minor'. Everything but the address and the info bytes is filled in by
+    MasterBus.identify().
     """
     address: Address
     info: bytes = b""
@@ -235,6 +258,16 @@ class Device:
         """Return the name given to the device: the product name without its type."""
         _, _, tail = self.product_name.partition(" ")
         return tail
+
+    @property
+    def event_counter(self) -> int | None:
+        """Return the device's event counter, the first info byte of its announcement, or None without one.
+
+        The counter steps up when the device's state changes: a login or logout, a value written, and other
+        changes; a device that announces a new count is one to read again.
+        """
+        # Documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); not yet seen stepping here.
+        return self.info[0] if self.info else None
 
     @property
     def flash_mode(self) -> bool:
@@ -269,15 +302,17 @@ class MasterBus:
     """A MasterBus reached through one link.
 
     Create one on *link*, a HidLink (the first link found, by default), with *host* as this computer's
-    address (HOST_ADDRESS by default), waiting *reply_timeout* seconds for each reply (0.3 by default) and
-    re-sending a request *retries* times (2 by default) before giving up. Every method that sends raises
-    LinkError once the link has failed.
+    address (by default the one host_address() computes from the link's serial number when it is opened, or
+    HOST_ADDRESS), waiting *reply_timeout* seconds for each reply (0.3 by default) and re-sending a request
+    *retries* times (2 by default) before giving up. Every method that sends raises LinkError once the link
+    has failed.
     """
 
-    def __init__(self, link: HidLink | None = None, host: Address = HOST_ADDRESS, reply_timeout: float = 0.3,
+    def __init__(self, link: HidLink | None = None, host: Address | None = None, reply_timeout: float = 0.3,
                  retries: int = 2):
         self.link = link or HidLink()
-        self.host = host
+        self.host = host or HOST_ADDRESS
+        self._host_given = host is not None
         self.reply_timeout = reply_timeout
         self.retries = retries
         self._queue = FrameQueue()
@@ -287,6 +322,10 @@ class MasterBus:
     def open(self) -> MasterBus:
         """Open the link and return the bus."""
         self.link.open(self._receive)
+        serial = getattr(getattr(self.link, "info", None), "serial", "")
+        if not self._host_given and isinstance(serial, str) and serial:
+            self.host = host_address(serial)
+            logger.debug(f"this computer's address is {self.host}, from the link's serial number {serial}")
         return self
 
     def _receive(self, frame: Frame) -> None:

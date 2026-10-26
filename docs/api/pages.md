@@ -251,6 +251,47 @@ the high field of a master's address (MasterAdjust, an EasyView): data[2] of tha
 
 #### VIS\_LETTERS
 
+<a id="mvconnect.pages.DATE_YEAR"></a>
+
+#### DATE\_YEAR
+
+a date value is year * 416 + month * 32 + day, 416 being 13 * 32
+
+<a id="mvconnect.pages.date_text"></a>
+
+#### date\_text
+
+```python
+def date_text(value: float) -> str | None
+```
+
+Return the date *value* holds as 'YYYY-MM-DD', or None if it holds no date.
+
+A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
+is out of range holds no date.
+
+<a id="mvconnect.pages.date_value"></a>
+
+#### date\_value
+
+```python
+def date_value(text: str) -> float
+```
+
+Return the number a date value holds for *text*, a date written 'YYYY-MM-DD'.
+
+Raise ValueError if *text* is not a date of that form.
+
+<a id="mvconnect.pages.duration_text"></a>
+
+#### duration\_text
+
+```python
+def duration_text(seconds: float) -> str
+```
+
+Return *seconds*, a whole number of them, as 'H:MM:SS', with the days in front as 'Nd ' past a day.
+
 <a id="mvconnect.pages.Value"></a>
 
 ## Value
@@ -339,9 +380,9 @@ Return the number *text* means for this value.
 
 A value with options takes only their names, compared without regard to case, and gives the option's
 index: a number, an index among them, is no name. A switch, an alarm value or an action or flag value
-of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. Any other value takes a
-number. A number past a bound by less than a millionth of it gives the bound, since the bounds arrive
-as float32.
+of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. A date value takes a date
+written 'YYYY-MM-DD' as well as a number (see date_value()). Any other value takes a number. A number
+past a bound by less than a millionth of it gives the bound, since the bounds arrive as float32.
 
 Raise ValueError, which names the options where there are any, if *text* is none of those, is a number
 the bus cannot carry (see sendable()) or lies outside the range.
@@ -446,7 +487,9 @@ def format(value: float | None) -> str
 Return *value* as text for this value.
 
 That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-'n/a' for NaN, else the number with the step's precision.
+'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+value shows its date (see date_text()) and a counter value of a minute or more its whole seconds as
+a duration (see duration_text()).
 
 <a id="mvconnect.pages.Group"></a>
 

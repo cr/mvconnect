@@ -302,3 +302,31 @@ def test_the_first_line_about_a_signal_is_a_warning_and_the_rest_info(caplog):
     winding_down(e.value, "wound down, exiting with status 130")
     levels = [(r.levelname, r.getMessage().split(": ")[1][:20]) for r in caplog.records if "Ctrl-C" in r.getMessage()]
     assert [level for level, _ in levels] == ["WARNING", "INFO", "INFO"], levels
+
+
+def test_host_address_follows_the_link_serial():
+    from mvconnect.masterbus import host_address
+    assert host_address("F226E0141") == Address(0x14, 0x3044D)  # year 2 & 3, week 26, number 141, groups 207
+    assert host_address("K712Q2000", "77030500") == Address(0x14, 0x3FF90)  # year 7 & 3 = 3, week 12, groups 607
+    assert host_address("FO26E0141") == host_address("F226E0141")  # O stands for 10, and 10 & 3 == 2 & 3
+    for bad in ("", "F226E014", "F226E01411", "FX26E0141", "F2A6E0141", "F226E01x1"):
+        assert host_address(bad) == HOST_ADDRESS
+    assert host_address("F226E0141", "abc") == HOST_ADDRESS
+
+
+def test_the_bus_takes_its_address_from_the_link():
+    class LinkWithSerial(FakeLink):
+        info = type("Info", (), {"serial": "F226E0141"})()
+
+    bus = MasterBus(LinkWithSerial(), reply_timeout=0.05).open()
+    bus.enumerate(timeout=0.05)
+    assert bus.link.sent[0] == Frame(KIND_ENUMERATE, Address(0x14, 0x3044D))
+    given = MasterBus(LinkWithSerial(), host=Address(0x14, 0x7), reply_timeout=0.05).open()
+    assert given.host == Address(0x14, 0x7)
+    assert MasterBus(FakeLink(), reply_timeout=0.05).open().host == HOST_ADDRESS  # a link without a serial
+
+
+def test_the_event_counter_is_the_first_info_byte():
+    from mvconnect.masterbus import Device
+    assert Device(Address(0x0A, 0x1062B), info=bytes.fromhex("0a030000")).event_counter == 10
+    assert Device(Address(0x0A, 0x1062B)).event_counter is None

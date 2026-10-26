@@ -32,6 +32,26 @@ Requests by their first data byte, the Command:
 
 #### HOST\_ADDRESS
 
+<a id="mvconnect.masterbus.LINK_PRODUCT"></a>
+
+#### LINK\_PRODUCT
+
+the product number of the MasterBus USB Link
+
+<a id="mvconnect.masterbus.host_address"></a>
+
+#### host\_address
+
+```python
+def host_address(serial: str, product: str = LINK_PRODUCT) -> Address
+```
+
+Return the address this computer takes on the bus through the link with the *serial* number.
+
+The high field is 0x14. The low field is computed from the serial number, nine characters of the form
+'LYWWLNNNN', and the link's *product* number the way a device computes its own, so that two links get two
+addresses. Return HOST_ADDRESS if *serial* is not of that form.
+
 <a id="mvconnect.masterbus.Command"></a>
 
 ## Command
@@ -260,10 +280,11 @@ class Device()
 
 A device on the bus.
 
-It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
-*product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
-'<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
-address and the info bytes is filled in by MasterBus.identify().
+It holds its *address*; the four *info* bytes of its announcement (see event_counter and flash_mode; the
+rest of their meaning is not yet known); its *product* number such as 77020100; its *serial* number; its
+*product_name* as the device reports it, '<type> <name>'; its hardware *revision*; and its firmware
+*version*, 'major.minor'. Everything but the address and the info bytes is filled in by
+MasterBus.identify().
 
 <a id="mvconnect.masterbus.Device.address"></a>
 
@@ -325,6 +346,20 @@ def name() -> str
 ```
 
 Return the name given to the device: the product name without its type.
+
+<a id="mvconnect.masterbus.Device.event_counter"></a>
+
+#### event\_counter
+
+```python
+@property
+def event_counter() -> int | None
+```
+
+Return the device's event counter, the first info byte of its announcement, or None without one.
+
+The counter steps up when the device's state changes: a login or logout, a value written, and other
+changes; a device that announces a new count is one to read again.
 
 <a id="mvconnect.masterbus.Device.flash_mode"></a>
 
@@ -391,9 +426,10 @@ class MasterBus()
 A MasterBus reached through one link.
 
 Create one on *link*, a HidLink (the first link found, by default), with *host* as this computer's
-address (HOST_ADDRESS by default), waiting *reply_timeout* seconds for each reply (0.3 by default) and
-re-sending a request *retries* times (2 by default) before giving up. Every method that sends raises
-LinkError once the link has failed.
+address (by default the one host_address() computes from the link's serial number when it is opened, or
+HOST_ADDRESS), waiting *reply_timeout* seconds for each reply (0.3 by default) and re-sending a request
+*retries* times (2 by default) before giving up. Every method that sends raises LinkError once the link
+has failed.
 
 <a id="mvconnect.masterbus.MasterBus.open"></a>
 

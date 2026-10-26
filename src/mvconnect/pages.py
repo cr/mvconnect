@@ -105,6 +105,48 @@ VIS_LETTERS = {VIS_NUMBER: "n", VIS_FLAG: "f", VIS_LIST: "l", VIS_ALARM: "a", VI
                VIS_COUNTER: "c", VIS_DATE: "d", VIS_DEVICE: "D", VIS_COMMAND: "C"}
 
 
+DATE_YEAR = 416  # a date value is year * 416 + month * 32 + day, 416 being 13 * 32
+
+
+def date_text(value: float) -> str | None:
+    """Return the date *value* holds as 'YYYY-MM-DD', or None if it holds no date.
+
+    A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
+    is out of range holds no date.
+    """
+    # The encoding is documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); not yet seen here.
+    if value != value or not 0 < value < 1e9 or value != int(value):
+        return None
+    year, rest = divmod(int(value), DATE_YEAR)
+    month, day = divmod(rest, 32)
+    if not (year >= 1 and 1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def date_value(text: str) -> float:
+    """Return the number a date value holds for *text*, a date written 'YYYY-MM-DD'.
+
+    Raise ValueError if *text* is not a date of that form.
+    """
+    parts = text.strip().split("-")
+    try:
+        year, month, day = (int(part) for part in parts)
+    except ValueError:
+        raise ValueError(f"{text!r} is not a date, expected YYYY-MM-DD") from None
+    if len(parts) != 3 or not (year >= 1 and 1 <= month <= 12 and 1 <= day <= 31):
+        raise ValueError(f"{text!r} is not a date, expected YYYY-MM-DD")
+    return float(year * DATE_YEAR + month * 32 + day)
+
+
+def duration_text(seconds: float) -> str:
+    """Return *seconds*, a whole number of them, as 'H:MM:SS', with the days in front as 'Nd ' past a day."""
+    days, rest = divmod(int(seconds), 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    return (f"{days}d " if days else "") + f"{hours}:{minutes:02d}:{secs:02d}"
+
+
 def _slack(bound: float) -> float:
     """Return how far a typed number may lie beyond *bound*, a float32 off the bus, and still be the bound.
 
@@ -147,9 +189,9 @@ class Value:
 
         A value with options takes only their names, compared without regard to case, and gives the option's
         index: a number, an index among them, is no name. A switch, an alarm value or an action or flag value
-        of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. Any other value takes a
-        number. A number past a bound by less than a millionth of it gives the bound, since the bounds arrive
-        as float32.
+        of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. A date value takes a date
+        written 'YYYY-MM-DD' as well as a number (see date_value()). Any other value takes a number. A number
+        past a bound by less than a millionth of it gives the bound, since the bounds arrive as float32.
 
         Raise ValueError, which names the options where there are any, if *text* is none of those, is a number
         the bus cannot carry (see sendable()) or lies outside the range.
@@ -160,6 +202,8 @@ class Value:
                 if fold(option) == fold(t):
                     return float(n)
             raise ValueError(f"{text!r} is not one of {', '.join(repr(o) for o in self.options)}")
+        if self.visualization == VIS_DATE and t.count("-") == 2 and not t.startswith("-"):
+            return date_value(t)
         low = t.lower()
         if self._switch and low in ("on", "off", "true", "false", "yes", "no"):
             return 1.0 if low in ("on", "true", "yes") else 0.0
@@ -311,12 +355,18 @@ class Value:
         """Return *value* as text for this value.
 
         That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-        'n/a' for NaN, else the number with the step's precision.
+        'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+        value shows its date (see date_text()) and a counter value of a minute or more its whole seconds as
+        a duration (see duration_text()).
         """
         if value is None:
             return "-"
         if value != value:  # NaN: the device has no value yet
             return "n/a"
+        if self.visualization == VIS_DATE and (date := date_text(value)):
+            return f"{int(value)} ({date})"
+        if self.visualization == VIS_COUNTER and 60 <= value < 1e9 and value == int(value):
+            return f"{int(value)} ({duration_text(value)})"
         if self.visualization in LISTED and 0 <= value < len(self.options) and value == int(value):
             return self.options[int(value)]
         if self.step and 0 < self.step < 1:
