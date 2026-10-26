@@ -1127,3 +1127,71 @@ def test_counter_values_show_a_duration_from_a_minute_up():
     assert counter.format(54496.0) == "54496 (15:08:16)" and counter.format(60.0) == "60 (0:01:00)"
     assert counter.format(59.0) == "59" and counter.format(0.0) == "0" and counter.format(61.5) == "61.5"
     assert Value(0).format(54496.0) == "54496"
+
+
+@pytest.fixture
+def switch(config):
+    """The system, the shunt, its config page and value 7 made a button of range 0..1, whose next index is no
+    value of the page; the fake's value 7 is restored afterwards."""
+    from mvconnect.pages import VIS_ACTION
+    system, device, table = config
+    kept = VALUES[0x37][7]
+    ADDRESS_FRAMES.clear()
+    button = dataclasses.replace(table.values[7], visualization=VIS_ACTION, minimum=0.0, maximum=1.0)
+    yield system, device, table, button
+    VALUES[0x37][7] = kept
+
+
+def test_a_forced_switch_write_names_the_writer_at_the_next_index(switch, bus):
+    system, device, table, button = switch
+    written = system.write(device, table, button, "on", timeout=0.02)
+    assert written.took and VALUES[0x37][7] == 1.0 and not ADDRESS_FRAMES  # unforced: the value alone
+    written = system.write(device, table, button, "off", force=True, timeout=0.02)
+    assert written.took and VALUES[0x37][7] == 0.0 and not written.warnings
+    assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]  # the host address 14:01234, low field LE
+    sent = [f.data for f in bus.link.sent if f.kind == 0x37 and len(f.data) == 6]
+    assert sent[-2][:2] == bytes([7, 0]) and sent[-1] == ADDRESS_FRAMES[0]  # the value first, then the writer
+
+
+def test_no_writer_is_named_where_the_next_index_is_a_value(config, bus):
+    from mvconnect.pages import VIS_ACTION, VIS_NUMBER
+    system, device, table = config
+    kept = dict(VALUES[0x37])
+    ADDRESS_FRAMES.clear()
+    try:
+        at_5 = dataclasses.replace(table.values[5], visualization=VIS_ACTION, minimum=0.0, maximum=1.0)  # 6 is a value
+        system.write(device, table, at_5, "on", force=True, timeout=0.02)
+        number = dataclasses.replace(table.values[7], visualization=VIS_NUMBER, minimum=0.0, maximum=1.0)  # no switch
+        system.write(device, table, number, "1", force=True, timeout=0.02)
+        wide = dataclasses.replace(table.values[7], visualization=VIS_ACTION, minimum=0.0, maximum=2.0)  # three states
+        system.write(device, table, wide, "1", force=True, timeout=0.02)
+    finally:
+        VALUES[0x37].clear(), VALUES[0x37].update(kept)
+    assert not ADDRESS_FRAMES
+
+
+def test_a_writer_frame_refused_or_unanswered_is_warned_of(switch, bus):
+    system, device, table, button = switch
+    naming = lambda f: f.kind == 0x37 and len(f.data) == 6 and f.data[2] == 0x14  # noqa: E731
+    undo = answering(bus, lambda kind, data: (kind + 0x10, data), to=naming)  # 'not available' instead of the echo
+    try:
+        written = system.write(device, table, button, "on", force=True, timeout=0.02)
+    finally:
+        undo()
+    assert written.took and [w for w in written.warnings if has(w, "writer", "refused")]
+    undo = answering(bus, lambda kind, data: None, to=naming)  # silence
+    try:
+        written = system.write(device, table, button, "off", force=True, timeout=0.02)
+    finally:
+        undo()
+    assert written.took and [w for w in written.warnings if has(w, "writer")]
+    assert not any(has(w, "refused") for w in written.warnings)
+
+
+def test_name_writer_needs_a_page_with_a_read_kind(bus):
+    r = PageReader(bus, SHUNT, reply_timeout=0.02, retries=0)
+    ADDRESS_FRAMES.clear()
+    assert r.name_writer(PAGE_BY_NAME["config"], 7) is True
+    assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+    with pytest.raises(ValueError):
+        r.name_writer(PAGE_BY_NAME["alarm"], 0)

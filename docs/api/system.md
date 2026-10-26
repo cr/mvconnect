@@ -371,6 +371,18 @@ Write *value* at *index* of *table*'s page and return what the device echoes.
 
 See PageReader.write_value().
 
+<a id="mvconnect.system.System.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(device: Device, table: PageTable, index: int) -> bool | None
+```
+
+Name this computer as the writer of the value at *index* of *table*'s page.
+
+See PageReader.name_writer().
+
 <a id="mvconnect.system.System.write_text"></a>
 
 #### write\_text
@@ -404,9 +416,12 @@ bus by its name, type or address, which must be among the value's entries, or no
 device or command value are read from the device first, since they follow the bus. The text is checked
 against the value's range, entries or length and the device's writeable flag, and a check that fails
 raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
-Latin-1, which a device's text cannot hold, raises ValueError. A device value takes nothing but a device
-among its entries, or none, *force* or not: a text that names no device on the bus, or more than one,
-or a device that is not among the entries, raises AddressError; *timeout* is for finding the device.
+Latin-1, which a device's text cannot hold, raises ValueError. Forced, a write to a switch (an alarm
+value, or an action or flag value of range 0..1) is followed by the frame that names this computer
+as the writer (see name_writer()), unless the index after the switch is a value of the page. A device
+value takes nothing but a device among its entries, or none, *force* or not: a text that names no
+device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
+*timeout* is for finding the device.
 none chooses the empty entry or, where there is none, the value just past the entries, which is how a
 CHG clears an event target (on a device value that holds a plain index, the read-back then says the
 write did not take). The device checks again and may refuse (ValueError); a device that does not

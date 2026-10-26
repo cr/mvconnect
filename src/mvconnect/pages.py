@@ -93,9 +93,10 @@ ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does 
 # but text; MasterAdjust writes counters and dates as numbers too, and device and command values as the
 # entry's index. A text value holds the id of a device string; the text is written through the General
 # String request, four characters per frame (MasterBus.write_string).
-# After writing an eventable value, MasterAdjust sends one more frame to the NEXT index: kind =
-# page.read, DLC 6 [idx+1 as u16, 0x14, the low three bytes of its own address]. mvconnect does not
-# send it yet (see Value.eventable).
+# After writing a switch, MasterAdjust sends one more frame to the NEXT index: kind = page.read, DLC 6
+# [idx+1 as u16, 0x14, the low three bytes of its own address]: it names itself as the writer, and a relay
+# or an action does not act until it has come (so keesverruijt/masterbus found; not yet seen here).
+# PageReader.name_writer() sends it, System.write() only when forced; see devnotes/masteradjust-re.md.
 MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
              VIS_TEXT: "text", VIS_COUNTER: "counter", VIS_DATE: "date", VIS_DEVICE: "device",
@@ -205,7 +206,7 @@ class Value:
         if self.visualization == VIS_DATE and t.count("-") == 2 and not t.startswith("-"):
             return date_value(t)
         low = t.lower()
-        if self._switch and low in ("on", "off", "true", "false", "yes", "no"):
+        if self.is_switch and low in ("on", "off", "true", "false", "yes", "no"):
             return 1.0 if low in ("on", "true", "yes") else 0.0
         try:
             value = float(t)
@@ -227,7 +228,7 @@ class Value:
         return value
 
     @property
-    def _switch(self) -> bool:
+    def is_switch(self) -> bool:
         """Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1."""
         return self.visualization == VIS_ALARM or (self.visualization in (VIS_ACTION, VIS_FLAG)
                                                    and self.minimum == 0 and self.maximum == 1)
@@ -506,6 +507,32 @@ class PageReader:
         echoed = struct.unpack_from("<f", reply.data, 2)[0]
         logger.debug(f"{self.address} {page.name} #{index} -> device echoes {echoed!r}")
         return echoed
+
+    def name_writer(self, page: Page, index: int) -> bool | None:
+        """Name this computer as the writer of the value at *index* of *page*, and return how the device took it.
+
+        The frame goes to the index after *index* and carries the bus's host address, as a master names itself
+        after writing a switch; a device may act on the switch only once it has come. Return True if the device
+        echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
+        *page* has no read kind.
+
+        Send it only where the index after *index* is no value of the page, which would be overwritten.
+        """
+        kind = page.read
+        if kind is None:
+            raise ValueError(f"{page.name} values cannot be written")
+        host = self.bus.host
+        data = (index + 1).to_bytes(2, "little") + bytes([host.hi]) + host.lo.to_bytes(3, "little")
+        logger.info(f"{self.address} {page.name} #{index}: naming {host} as the writer, at #{index + 1}")
+        try:
+            reply = self.bus.exchange(Frame(kind, self.address, data),
+                                      lambda f: f.address == self.address and f.data[:2] == data[:2]
+                                      and f.kind in (kind - 0x20, kind - 0x10),
+                                      timeout=self.reply_timeout, retries=0)
+        except TimeoutError:
+            logger.debug(f"{self.address} {page.name} #{index + 1}: no answer to the writer's address")
+            return None
+        return reply.kind == kind - 0x20
 
     def read_text(self, page: Page, index: int) -> tuple[int | None, str]:
         """Return (string id, text) for the text value at *index* of *page*.

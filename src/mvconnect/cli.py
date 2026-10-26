@@ -346,7 +346,10 @@ class Tool:
         the device gives; never to a button, which it would press, nor to
         a counter or date unless forced. Either is checked against the value's range and
         the device's writeable flag before anything is sent (--force skips
-        both); the device checks again and may refuse. When the words
+        both); the device checks again and may refuse. Forced, a write to a
+        switch (an alarm, or a button or flag of range 0..1) is followed by
+        the frame that names this computer as the writer, which a device may
+        need before it acts; untried on a real device, so expect nothing. When the words
         select several values, they are listed and nothing is written; an
         index alone is one value per page, so a write by index names the
         page or a word of the value's name.
@@ -360,7 +363,8 @@ class Tool:
         Args:
             set: The value to write; quoted when it has spaces: --set "Single device".
             reset: Write the value's default instead.
-            force: Send it even if the device marks the value read-only or the value is out of range.
+            force: Send it even if the device marks the value read-only or the value is out of range; after a
+                switch, send the frame naming this computer as the writer.
             timeout: How many seconds to wait for devices to announce themselves.
             cache: Keep a device's names and units in ~/.cache/mvconnect; --nocache reads them again and updates it.
             debug: Log every frame on the link, and say where each line comes from.

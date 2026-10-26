@@ -75,7 +75,10 @@ counter's seconds as a duration (both decoded as another MasterBus
 implementation documents it, not yet confirmed on my bus). It checks the value against
 the range and the writeable flag (`--force` skips both; a device value's
 device must be among the entries, forced or not), writes it, and shows the
-value before and after;
+value before and after. Forced, a write to a switch (an alarm, or a button
+or flag of range 0..1) is followed by the frame that names this computer
+as the writer, which MasterAdjust sends and a relay or button may need
+before it acts (so another implementation found; untried on my bus);
 `--reset` writes the default the device gives; never to a button, which
 it would press, nor to a counter or a date without `--force`. Either needs the words to
 select exactly one value; otherwise the matches are listed and nothing is

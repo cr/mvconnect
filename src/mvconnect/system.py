@@ -422,6 +422,13 @@ class System:
         """
         return PageReader(self.bus, device.address).write_value(table.page, index, value)
 
+    def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
+        """Name this computer as the writer of the value at *index* of *table*'s page.
+
+        See PageReader.name_writer().
+        """
+        return PageReader(self.bus, device.address).name_writer(table.page, index)
+
     def write_text(self, device: Device, table: PageTable, index: int, text: str) -> str:
         """Write *text* as the string the text value at *index* of *table*'s page names.
 
@@ -441,9 +448,12 @@ class System:
         device or command value are read from the device first, since they follow the bus. The text is checked
         against the value's range, entries or length and the device's writeable flag, and a check that fails
         raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
-        Latin-1, which a device's text cannot hold, raises ValueError. A device value takes nothing but a device
-        among its entries, or none, *force* or not: a text that names no device on the bus, or more than one,
-        or a device that is not among the entries, raises AddressError; *timeout* is for finding the device.
+        Latin-1, which a device's text cannot hold, raises ValueError. Forced, a write to a switch (an alarm
+        value, or an action or flag value of range 0..1) is followed by the frame that names this computer
+        as the writer (see name_writer()), unless the index after the switch is a value of the page. A device
+        value takes nothing but a device among its entries, or none, *force* or not: a text that names no
+        device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
+        *timeout* is for finding the device.
         none chooses the empty entry or, where there is none, the value just past the entries, which is how a
         CHG clears an event target (on a device value that holds a plain index, the read-back then says the
         write did not take). The device checks again and may refuse (ValueError); a device that does not
@@ -480,7 +490,7 @@ class System:
                     wanted = math.nan
                 if not sendable(wanted):
                     raise ValueError(f"{label}: {text!r} is no number the bus can carry") from None
-        return self._send(device, table, value, wanted)
+        return self._send(device, table, value, wanted, name_writer=force and self._names_writer(table, value))
 
     def write_default(self, device: Device, table: PageTable, value: Value, force: bool = False) -> Written:
         """Reset *value* of *table*'s page on *device* to the default the device gives.
@@ -533,11 +543,20 @@ class System:
                                f"{', '.join(value.options) or 'none at all'}")
         return float(choice)
 
-    def _send(self, device: Device, table: PageTable, value: Value, wanted: float | str) -> Written:
+    @staticmethod
+    def _names_writer(table: PageTable, value: Value) -> bool:
+        """Tell whether a forced write to *value* is followed by the frame naming the writer: a switch whose
+        next index is no value of the page."""
+        return value.is_switch and value.index + 1 not in table.values
+
+    def _send(self, device: Device, table: PageTable, value: Value, wanted: float | str,
+              name_writer: bool = False) -> Written:
         """Make the write itself, after the checks, and the read-back; return a Written.
 
         *wanted* is the number or text to write. A write the device does not acknowledge is read back anyway,
-        with a warning. A text value whose text cannot be read raises TimeoutError.
+        with a warning. A text value whose text cannot be read raises TimeoutError. With *name_writer*, the
+        frame naming this computer as the writer follows the write, acknowledged or not, and a device that
+        refuses it or does not answer it is warned of.
         """
         label = self._label(device, table, value)
         warnings: list[str] = []
@@ -562,6 +581,12 @@ class System:
         except TimeoutError:
             warnings.append(f"{label}: the device did not acknowledge the write; reading it back")
             echoed = None
+        if name_writer:
+            named = self.name_writer(device, table, value.index)
+            if named is None:
+                warnings.append(f"{label}: the device did not answer the frame naming this computer as the writer")
+            elif not named:
+                warnings.append(f"{label}: the device refused the frame naming this computer as the writer")
         after = self.read_values(device, table, [value.index])[value.index]
         took = after is not None and abs(after - wanted) <= (value.step or 1e-6) / 2
         if not took:

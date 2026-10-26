@@ -387,6 +387,17 @@ past a bound by less than a millionth of it gives the bound, since the bounds ar
 Raise ValueError, which names the options where there are any, if *text* is none of those, is a number
 the bus cannot carry (see sendable()) or lies outside the range.
 
+<a id="mvconnect.pages.Value.is_switch"></a>
+
+#### is\_switch
+
+```python
+@property
+def is_switch() -> bool
+```
+
+Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1.
+
 <a id="mvconnect.pages.Value.writer"></a>
 
 #### writer
@@ -627,6 +638,23 @@ button such as 'Complete' would be pressed again. The caller reads the value bac
 The reply to a write has the kind and index of the reply to a read, so another master polling the
 value answers alike. A refusal or an echo of exactly the value sent decides; a reply with another value,
 the device's own when it stores the value rounded, counts only when neither comes in time.
+
+<a id="mvconnect.pages.PageReader.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(page: Page, index: int) -> bool | None
+```
+
+Name this computer as the writer of the value at *index* of *page*, and return how the device took it.
+
+The frame goes to the index after *index* and carries the bus's host address, as a master names itself
+after writing a switch; a device may act on the switch only once it has come. Return True if the device
+echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
+*page* has no read kind.
+
+Send it only where the index after *index* is no value of the page, which would be overwritten.
 
 <a id="mvconnect.pages.PageReader.read_text"></a>
 
