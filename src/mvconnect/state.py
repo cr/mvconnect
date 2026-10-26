@@ -257,6 +257,8 @@ class StateServer:
             return s.write_value(device, table, int(p["index"]), float(p["value"]))
         if method == "write_text":
             return s.write_text(device, table, int(p["index"]), str(p["text"]))
+        if method == "name_writer":
+            return s.name_writer(device, table, int(p["index"]))
         raise ValueError(f"unknown method {method!r}")
 
 
@@ -290,7 +292,7 @@ class StateSystem(System):
 
     Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
     methods that talk to the bus (devices, traffic, login_level, login, tables, read_values, read_options,
-    read_text, write_value, write_text) send a request to the server instead and return what it
+    read_text, write_value, write_text, name_writer) send a request to the server instead and return what it
     answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
     there. listen() is not served: the server's traffic comes through traffic().
     """
@@ -448,6 +450,11 @@ class StateSystem(System):
         """Ask the server; see System.write_text()."""
         return str(self.call("write_text", device=encode_device(device), page=table.page.name, index=index,
                              text=text))
+
+    def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
+        """Ask the server; see System.name_writer()."""
+        named = self.call("name_writer", device=encode_device(device), page=table.page.name, index=index)
+        return None if named is None else bool(named)
 
 
 def connect(path: Path, timeout: float | None = None, refresh: bool = False) -> StateSystem:

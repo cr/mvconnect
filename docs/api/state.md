@@ -159,7 +159,7 @@ A System whose bus conversations go to the server's state; everything else runs 
 
 Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
 methods that talk to the bus (devices, traffic, login_level, login, tables, read_values, read_options,
-read_text, write_value, write_text) send a request to the server instead and return what it
+read_text, write_value, write_text, name_writer) send a request to the server instead and return what it
 answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
 there. listen() is not served: the server's traffic comes through traffic().
 
@@ -315,6 +315,16 @@ def write_text(device: Device, table: PageTable, index: int, text: str) -> str
 ```
 
 Ask the server; see System.write_text().
+
+<a id="mvconnect.state.StateSystem.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(device: Device, table: PageTable, index: int) -> bool | None
+```
+
+Ask the server; see System.name_writer().
 
 <a id="mvconnect.state.connect"></a>
 

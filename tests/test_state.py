@@ -101,6 +101,7 @@ def test_the_devices_are_identified_once(served):
         assert system.read_texts(device, table, [0, 7]) == {7: "MSH House Bank"}
         assert system.write_text(device, table, 7, "MSH Bow") == "MSH Bow"
         bus.write_string(SHUNT, 219, "MSH House Bank")
+        assert system.name_writer(device, table, 7) is True  # the fake echoes the frame to index 8
         assert version_reads(bus) == versions
         assert system.resolve_value(device, "battery type", "config")[1].index == 2
     finally:
