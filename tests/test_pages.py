@@ -1195,3 +1195,24 @@ def test_name_writer_needs_a_page_with_a_read_kind(bus):
     assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
     with pytest.raises(ValueError):
         r.name_writer(PAGE_BY_NAME["alarm"], 0)
+
+
+def test_the_writer_is_named_into_a_listed_register_but_not_over_a_value(switch, bus):
+    system, device, table, button = switch
+    register = Value(8, name="", writeable=True, minimum=float("nan"), maximum=65535.0, step=65535.0, default=65535.0)
+    assert register.is_writer_register
+    for other in (dataclasses.replace(register, name="Timer"), dataclasses.replace(register, writeable=False),
+                  dataclasses.replace(register, maximum=1.0), dataclasses.replace(register, default=0.0),
+                  dataclasses.replace(register, minimum=0.0)):
+        assert not other.is_writer_register
+    values = dict(table.values)
+    try:
+        table.values[8] = register
+        system.write(device, table, button, "off", force=True, timeout=0.02)
+        assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+        ADDRESS_FRAMES.clear()
+        table.values[8] = dataclasses.replace(register, name="Timer")
+        system.write(device, table, button, "off", force=True, timeout=0.02)
+        assert not ADDRESS_FRAMES
+    finally:
+        table.values.clear(), table.values.update(values)

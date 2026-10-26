@@ -450,7 +450,8 @@ class System:
         raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
         Latin-1, which a device's text cannot hold, raises ValueError. Forced, a write to a switch (an alarm
         value, or an action or flag value of range 0..1) is followed by the frame that names this computer
-        as the writer (see name_writer()), unless the index after the switch is a value of the page. A device
+        as the writer (see name_writer()), unless the index after the switch is a value of the page other than
+        the register for the writer's address (see Value.is_writer_register). A device
         value takes nothing but a device among its entries, or none, *force* or not: a text that names no
         device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
         *timeout* is for finding the device.
@@ -546,8 +547,9 @@ class System:
     @staticmethod
     def _names_writer(table: PageTable, value: Value) -> bool:
         """Tell whether a forced write to *value* is followed by the frame naming the writer: a switch whose
-        next index is no value of the page."""
-        return value.is_switch and value.index + 1 not in table.values
+        next index is no value of the page, or is the register for the writer's address."""
+        after = table.values.get(value.index + 1)
+        return value.is_switch and (after is None or after.is_writer_register)
 
     def _send(self, device: Device, table: PageTable, value: Value, wanted: float | str,
               name_writer: bool = False) -> Written:

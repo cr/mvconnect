@@ -95,7 +95,8 @@ ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does 
 # String request, four characters per frame (MasterBus.write_string).
 # After writing a switch, MasterAdjust sends one more frame to the NEXT index: kind = page.read, DLC 6
 # [idx+1 as u16, 0x14, the low three bytes of its own address]: it names itself as the writer, and a relay
-# or an action does not act until it has come (so keesverruijt/masterbus found; not yet seen here).
+# or an action does not act until it has come (so keesverruijt/masterbus found; not yet seen here). The
+# EasyView lists the register at idx+1 as a value: unnamed, writeable, no range, 65535 as maximum and default.
 # PageReader.name_writer() sends it, System.write() only when forced; see devnotes/masteradjust-re.md.
 MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
@@ -233,6 +234,16 @@ class Value:
         """Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1."""
         return self.visualization == VIS_ALARM or (self.visualization in (VIS_ACTION, VIS_FLAG)
                                                    and self.minimum == 0 and self.maximum == 1)
+
+    @property
+    def is_writer_register(self) -> bool:
+        """Tell whether the value is the register after a switch that takes the writer's address.
+
+        Such a register has no name, is writeable, has no minimum, and has 65535 as its maximum, its step and
+        its default; an EasyView lists one after each of its eventable switches.
+        """
+        no_minimum = self.minimum is None or self.minimum != self.minimum
+        return not self.name and self.writeable and no_minimum and self.maximum == 65535 and self.default == 65535
 
     @property
     def writer(self) -> str:
@@ -517,7 +528,8 @@ class PageReader:
         echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
         *page* has no read kind.
 
-        Send it only where the index after *index* is no value of the page, which would be overwritten.
+        Send it only where the index after *index* is no value of the page, which would be overwritten, or is
+        the register for the writer's address (see Value.is_writer_register).
         """
         kind = page.read
         if kind is None:

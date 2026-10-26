@@ -418,7 +418,8 @@ against the value's range, entries or length and the device's writeable flag, an
 raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
 Latin-1, which a device's text cannot hold, raises ValueError. Forced, a write to a switch (an alarm
 value, or an action or flag value of range 0..1) is followed by the frame that names this computer
-as the writer (see name_writer()), unless the index after the switch is a value of the page. A device
+as the writer (see name_writer()), unless the index after the switch is a value of the page other than
+the register for the writer's address (see Value.is_writer_register). A device
 value takes nothing but a device among its entries, or none, *force* or not: a text that names no
 device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
 *timeout* is for finding the device.

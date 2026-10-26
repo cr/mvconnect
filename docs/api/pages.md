@@ -398,6 +398,20 @@ def is_switch() -> bool
 
 Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1.
 
+<a id="mvconnect.pages.Value.is_writer_register"></a>
+
+#### is\_writer\_register
+
+```python
+@property
+def is_writer_register() -> bool
+```
+
+Tell whether the value is the register after a switch that takes the writer's address.
+
+Such a register has no name, is writeable, has no minimum, and has 65535 as its maximum, its step and
+its default; an EasyView lists one after each of its eventable switches.
+
 <a id="mvconnect.pages.Value.writer"></a>
 
 #### writer
@@ -654,7 +668,8 @@ after writing a switch; a device may act on the switch only once it has come. Re
 echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
 *page* has no read kind.
 
-Send it only where the index after *index* is no value of the page, which would be overwritten.
+Send it only where the index after *index* is no value of the page, which would be overwritten, or is
+the register for the writer's address (see Value.is_writer_register).
 
 <a id="mvconnect.pages.PageReader.read_text"></a>
 
