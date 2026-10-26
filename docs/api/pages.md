@@ -854,8 +854,9 @@ read so far and the total. Firmware that counts more values than it has and answ
 phantoms is cut at the first two junk values in a row. A version number the device does not answer
 for is kept as None.
 
-Raise TimeoutError if the device does not answer, NotAvailable (a TimeoutError) or ValueError if it
-gives no number of values or groups.
+A page the device answers 'not available' for the number of values or groups of, as an EasyView does
+for its alarm page, is returned empty. Raise TimeoutError if the device does not answer, ValueError if
+it gives no number of values or groups.
 
 <a id="mvconnect.pages.table_to_dict"></a>
 

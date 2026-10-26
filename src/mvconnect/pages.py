@@ -799,11 +799,16 @@ class PageReader:
         phantoms is cut at the first two junk values in a row. A version number the device does not answer
         for is kept as None.
 
-        Raise TimeoutError if the device does not answer, NotAvailable (a TimeoutError) or ValueError if it
-        gives no number of values or groups.
+        A page the device answers 'not available' for the number of values or groups of, as an EasyView does
+        for its alarm page, is returned empty. Raise TimeoutError if the device does not answer, ValueError if
+        it gives no number of values or groups.
         """
-        n_values = self.bus.read_number(self.address, page.count_values)
-        n_groups = self.bus.read_number(self.address, page.count_groups)
+        try:
+            n_values = self.bus.read_number(self.address, page.count_values)
+            n_groups = self.bus.read_number(self.address, page.count_groups)
+        except NotAvailable:
+            logger.info(f"{self.address} {page.name}: the device has no such page")
+            return PageTable(page)
         logger.debug(f"{self.address} {page.name}: reading {n_values} values and {n_groups} groups "
                      f"(kinds info {page.info:#04x} group {page.group:#04x} read {page.read})")
         try:

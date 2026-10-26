@@ -52,6 +52,7 @@ VALUES = {0x30: {0: 98.9, 1: 13.4}, 0x37: {0: 12.0, 1: 510.0, 2: 3.0, 5: 0.0, 6:
 COUNTS = {0x01: 2, 0x02: 1, 0x03: 0, 0x04: 0, 0x05: 8, 0x06: 2, 0x07: 0, 0x08: 0, 0x0B: 0x0201,
           0x1C: 5, 0x1D: 1, 0x1E: 7, 0x1F: 1, 0x60: 14,  # page version numbers and the status version
           0x19: 0}  # the login level
+NO_COUNT: set[int] = set()  # count kinds the fake answers 'not available' for, as an EasyView does for its alarm page
 JUNK_FROM = [None]  # when set: the fake answers attributes of config values from this index on with zeros
 ADDRESS_FRAMES = []  # the 0x14 frames the fake device received
 GROUP_LENGTHS = {(0x39, 1): 2}  # config group 1 says it has 2 members, though it answers 4
@@ -103,7 +104,9 @@ class FakeShunt:
                 elif d[1] in COUNTS:
                     self.reply(KIND_NA, d)
             elif k == KIND_REQUEST and d[0] == 0x08:
-                if d[1] in COUNTS:
+                if d[1] in NO_COUNT:
+                    self.reply(KIND_NA, d)
+                elif d[1] in COUNTS:
                     self.reply(KIND_REPLY, d[:2] + COUNTS[d[1]].to_bytes(2, "little"))
             elif k in VALUES and len(d) == 2:
                 i = d[0] | d[1] << 8
@@ -1216,3 +1219,18 @@ def test_the_writer_is_named_into_a_listed_register_but_not_over_a_value(switch,
         assert not ADDRESS_FRAMES
     finally:
         table.values.clear(), table.values.update(values)
+
+
+def test_a_page_the_device_has_not_got_is_empty(bus, tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    NO_COUNT.add(0x07)  # the alarm page's values: 'not available', as an EasyView answers
+    try:
+        r = PageReader(bus, SHUNT, reply_timeout=0.02, retries=0)
+        table = r.read_page(PAGE_BY_NAME["alarm"])
+        assert table.values == {} and table.groups == [] and table.version is None
+        system = System(bus)
+        device = system.device("msh", timeout=0.02)
+        tables = system.tables(device, list(PAGES))
+        assert sorted(tables) == ["alarm", "config", "history", "monitor"] and tables["alarm"].values == {}
+    finally:
+        NO_COUNT.discard(0x07)
