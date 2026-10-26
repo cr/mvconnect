@@ -95,9 +95,9 @@ ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does 
 # String request, four characters per frame (MasterBus.write_string).
 # After writing a switch, MasterAdjust sends one more frame to the NEXT index: kind = page.read, DLC 6
 # [idx+1 as u16, 0x14, the low three bytes of its own address]: it names itself as the writer, and a relay
-# or an action does not act until it has come (so keesverruijt/masterbus found; not yet seen here). The
-# EasyView lists the register at idx+1 as a value: unnamed, writeable, no range, 65535 as maximum and default.
-# PageReader.name_writer() sends it, System.write() only when forced; see devnotes/masteradjust-re.md.
+# or an action does not act until it has come (so keesverruijt/masterbus found). The EasyView lists the
+# register at idx+1 as a value, unnamed, writeable, no range, 65535 as maximum and default, and echoes the
+# frame. PageReader.name_writer() sends it, System.write() after every switch; see devnotes/masteradjust-re.md.
 MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
              VIS_TEXT: "text", VIS_COUNTER: "counter", VIS_DATE: "date", VIS_DEVICE: "device",

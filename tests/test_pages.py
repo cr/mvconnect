@@ -1145,15 +1145,18 @@ def switch(config):
     VALUES[0x37][7] = kept
 
 
-def test_a_forced_switch_write_names_the_writer_at_the_next_index(switch, bus):
+def test_a_switch_write_names_the_writer_at_the_next_index(switch, bus):
     system, device, table, button = switch
+    writer = bytes([8, 0, 0x14, 0x34, 0x12, 0x00])  # the host address 14:01234, low field LE
     written = system.write(device, table, button, "on", timeout=0.02)
-    assert written.took and VALUES[0x37][7] == 1.0 and not ADDRESS_FRAMES  # unforced: the value alone
-    written = system.write(device, table, button, "off", force=True, timeout=0.02)
-    assert written.took and VALUES[0x37][7] == 0.0 and not written.warnings
-    assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]  # the host address 14:01234, low field LE
+    assert written.took and VALUES[0x37][7] == 1.0 and not written.warnings and ADDRESS_FRAMES == [writer]
+    written = system.write(device, table, button, "off", force=True, timeout=0.02)  # forced or not
+    assert written.took and VALUES[0x37][7] == 0.0 and not written.warnings and ADDRESS_FRAMES == [writer, writer]
     sent = [f.data for f in bus.link.sent if f.kind == 0x37 and len(f.data) == 6]
-    assert sent[-2][:2] == bytes([7, 0]) and sent[-1] == ADDRESS_FRAMES[0]  # the value first, then the writer
+    assert sent[-2][:2] == bytes([7, 0]) and sent[-1] == writer  # the value first, then the writer
+    nominal = table.values[0]  # a number: no switch, no frame
+    system.write(device, table, nominal, "24", timeout=0.02)
+    assert ADDRESS_FRAMES == [writer, writer]
 
 
 def test_no_writer_is_named_where_the_next_index_is_a_value(config, bus):

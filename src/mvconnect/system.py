@@ -448,10 +448,10 @@ class System:
         device or command value are read from the device first, since they follow the bus. The text is checked
         against the value's range, entries or length and the device's writeable flag, and a check that fails
         raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
-        Latin-1, which a device's text cannot hold, raises ValueError. Forced, a write to a switch (an alarm
-        value, or an action or flag value of range 0..1) is followed by the frame that names this computer
-        as the writer (see name_writer()), unless the index after the switch is a value of the page other than
-        the register for the writer's address (see Value.is_writer_register). A device
+        Latin-1, which a device's text cannot hold, raises ValueError. A write to a switch (an alarm value,
+        or an action or flag value of range 0..1) is followed by the frame that names this computer as the
+        writer (see name_writer()), unless the index after the switch is a value of the page other than the
+        register for the writer's address (see Value.is_writer_register). A device
         value takes nothing but a device among its entries, or none, *force* or not: a text that names no
         device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
         *timeout* is for finding the device.
@@ -491,7 +491,7 @@ class System:
                     wanted = math.nan
                 if not sendable(wanted):
                     raise ValueError(f"{label}: {text!r} is no number the bus can carry") from None
-        return self._send(device, table, value, wanted, name_writer=force and self._names_writer(table, value))
+        return self._send(device, table, value, wanted, name_writer=self._names_writer(table, value))
 
     def write_default(self, device: Device, table: PageTable, value: Value, force: bool = False) -> Written:
         """Reset *value* of *table*'s page on *device* to the default the device gives.
@@ -546,8 +546,8 @@ class System:
 
     @staticmethod
     def _names_writer(table: PageTable, value: Value) -> bool:
-        """Tell whether a forced write to *value* is followed by the frame naming the writer: a switch whose
-        next index is no value of the page, or is the register for the writer's address."""
+        """Tell whether a write to *value* is followed by the frame naming the writer: a switch whose next
+        index is no value of the page, or is the register for the writer's address."""
         after = table.values.get(value.index + 1)
         return value.is_switch and (after is None or after.is_writer_register)
 
