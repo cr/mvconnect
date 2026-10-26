@@ -9,7 +9,7 @@ from expect import has, line_with, logged, mentions
 from mvconnect import cache
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
-from mvconnect.pages import PAGE_BY_NAME, PAGES, PageReader, Value, table_from_dict, table_to_dict
+from mvconnect.pages import PAGE_BY_NAME, PAGES, VIS_FLAG, PageReader, Value, table_from_dict, table_to_dict
 from mvconnect.system import AddressError, Refused, System
 
 SHUNT = Address(0x1B, 0x0CAD9)
@@ -454,14 +454,14 @@ def answering(bus, change, to=lambda f: f.kind == 0x37 and len(f.data) == 6 and 
 
 
 def test_a_reset_presses_no_button_and_writes_no_marker(config, bus):
-    from mvconnect.pages import VIS_ACTION, VIS_COUNTER, VIS_LIST
+    from mvconnect.pages import VIS_ACTION, VIS_LIST, VIS_TIME
     system, device, table = config
     nominal = table.values[0]
     button = dataclasses.replace(nominal, visualization=VIS_ACTION, minimum=0.0, maximum=1.0, default=1.0)
     with pytest.raises(ValueError):
         system.write_default(device, table, button, force=True)
     with pytest.raises(Refused):
-        system.write_default(device, table, dataclasses.replace(nominal, visualization=VIS_COUNTER, default=12.0))
+        system.write_default(device, table, dataclasses.replace(nominal, visualization=VIS_TIME, default=12.0))
     assert dataclasses.replace(nominal, minimum=None, maximum=None, default=65535.0).default_value is None
     listed = dataclasses.replace(nominal, visualization=VIS_LIST, options=["A", "B", "C"], minimum=0.0, maximum=8.0)
     assert dataclasses.replace(listed, default=4.0).default_value is None
@@ -1117,18 +1117,18 @@ def test_date_values_show_and_take_a_date():
     for no_date in (0.0, 5.0, 843000.5, float("inf"), 2026 * 416 + 13 * 32 + 1, 2026 * 416 + 0 * 32 + 1):
         assert date_text(no_date) is None
     assert date.format(5.0) == "5" and date.format(float("nan")) == "n/a"
-    for bad in ("2026-13-01", "2026-05", "x-y-z", "2026-05-00"):
+    for bad in ("2026-13-01", "2026-05", "x-y-z", "2026-05-00", "2026-02-31", "2026-05-24-1"):
         with pytest.raises(ValueError):
             date_value(bad)
     assert Value(0).format(843000.0) == "843000"  # a number is just a number
 
 
-def test_counter_values_show_a_duration_from_a_minute_up():
-    from mvconnect.pages import VIS_COUNTER, duration_text
-    counter = Value(0, visualization=VIS_COUNTER)
+def test_time_values_show_their_seconds_as_a_duration():
+    from mvconnect.pages import VIS_TIME, duration_text
+    time = Value(0, visualization=VIS_TIME)
     assert duration_text(54496) == "15:08:16" and duration_text(90061) == "1d 1:01:01"
-    assert counter.format(54496.0) == "54496 (15:08:16)" and counter.format(60.0) == "60 (0:01:00)"
-    assert counter.format(59.0) == "59" and counter.format(0.0) == "0" and counter.format(61.5) == "61.5"
+    assert time.format(54496.0) == "54496 (15:08:16)" and time.format(6.0) == "6 (0:00:06)"
+    assert time.format(0.0) == "0" and time.format(61.5) == "61.5"  # nothing to tell, or no whole seconds
     assert Value(0).format(54496.0) == "54496"
 
 
@@ -1209,7 +1209,7 @@ def test_the_writer_is_named_into_a_listed_register_but_not_over_a_value(switch,
     assert register.is_writer_register
     for other in (dataclasses.replace(register, name="Timer"), dataclasses.replace(register, writeable=False),
                   dataclasses.replace(register, maximum=1.0), dataclasses.replace(register, default=0.0),
-                  dataclasses.replace(register, minimum=0.0)):
+                  dataclasses.replace(register, minimum=0.0), dataclasses.replace(register, step=1.0)):
         assert not other.is_writer_register
     values = dict(table.values)
     try:
@@ -1239,11 +1239,10 @@ def test_a_page_the_device_has_not_got_is_empty(bus, tmp_path, monkeypatch):
         NO_COUNT.discard(0x07)
 
 
-def test_a_writer_register_shows_the_address_it_holds():
-    register = Value(3, name="", writeable=True, minimum=float("nan"), maximum=65535.0, step=65535.0, default=65535.0)
-    held = struct.unpack("<f", bytes([0x14, 0x4D, 0x04, 0x03]))[0]  # 14:3044d as the frame puts it
-    assert Value.writer_address(held) == Address(0x14, 0x3044D) and register.format(held) == "14:3044d"
-    assert register.format(0.0) == "0" and register.format(65535.0) == "65535"
-    assert register.format(float("nan")) == "n/a"
-    assert Value.writer_address(65535.0) is None and Value.writer_address(float("inf")) is None
-    assert Value(3).format(held) == "0"  # a number is just a number, and a tiny one
+
+def test_a_switch_reset_names_the_writer_as_its_write_does(switch, bus):
+    system, device, table, button = switch
+    flag = dataclasses.replace(button, visualization=VIS_FLAG, default=0.0)
+    VALUES[0x37][7] = 1.0
+    written = system.write_default(device, table, flag)
+    assert written.took and VALUES[0x37][7] == 0.0 and ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]

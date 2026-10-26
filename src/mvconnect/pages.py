@@ -11,6 +11,7 @@ n gives the index of the group's n-th value.
 
 from __future__ import annotations
 
+import datetime
 import enum
 import logging
 import struct
@@ -80,7 +81,7 @@ VIS_LIST = 3  # option texts via attribute 0x26
 VIS_ALARM = 4
 VIS_ACTION = 5  # 0..1 or 0..2 push buttons: "Reset setup", "Start test", "Clear history"
 VIS_TEXT = 6  # a text such as "Device name"; the range is its length. MasterAdjust shows it, offers no edit
-VIS_COUNTER = 7  # history counters, read-only
+VIS_TIME = 7  # seconds: a time of day, or how long something lasted; read-only
 VIS_DATE = 8
 VIS_DEVICE = 9  # a device on the bus: "Event n target", "Master", "Slave n"; its entries are addresses (attribute 0x20)
 VIS_COMMAND = 10  # "Event n command": a command of the target device; its entries are texts (attribute 0x0F)
@@ -90,21 +91,21 @@ NO_DEFAULT = 65535.0  # how devices say a value has no default
 ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does not say
 
 # How a write reaches a value: the ordinary write, kind = page.read, DLC 6 [idx16, float32], for every type
-# but text; MasterAdjust writes counters and dates as numbers too, and device and command values as the
+# but text; MasterAdjust writes times and dates as numbers too, and device and command values as the
 # entry's index. A text value holds the id of a device string; the text is written through the General
 # String request, four characters per frame (MasterBus.write_string).
 # After writing a switch, MasterAdjust sends one more frame to the NEXT index: kind = page.read, DLC 6
 # [idx+1 as u16, 0x14, the low three bytes of its own address]: it names itself as the writer, and a relay
-# or an action does not act until it has come (so keesverruijt/masterbus found). The EasyView lists the
-# register at idx+1 as a value, unnamed, writeable, no range, 65535 as maximum and default, and echoes the
-# frame. PageReader.name_writer() sends it, System.write() after every switch; see devnotes/masteradjust-re.md.
+# or an action does not act until it has come (so another MasterBus implementation found). The EasyView
+# lists the register at idx+1 as a value, unnamed, writeable, no range, 65535 as maximum, step and default,
+# and echoes the frame. PageReader.name_writer() sends it, System.write() after every switch.
 MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
-             VIS_TEXT: "text", VIS_COUNTER: "counter", VIS_DATE: "date", VIS_DEVICE: "device",
+             VIS_TEXT: "text", VIS_TIME: "time", VIS_DATE: "date", VIS_DEVICE: "device",
              VIS_COMMAND: "command"}
 # One letter per type, for the attribute column of a listing (ls -l style)
 VIS_LETTERS = {VIS_NUMBER: "n", VIS_FLAG: "f", VIS_LIST: "l", VIS_ALARM: "a", VIS_ACTION: "b", VIS_TEXT: "t",
-               VIS_COUNTER: "c", VIS_DATE: "d", VIS_DEVICE: "D", VIS_COMMAND: "C"}
+               VIS_TIME: "T", VIS_DATE: "d", VIS_DEVICE: "D", VIS_COMMAND: "C"}
 
 
 DATE_YEAR = 416  # a date value is year * 416 + month * 32 + day, 416 being 13 * 32
@@ -116,8 +117,7 @@ def date_text(value: float) -> str | None:
     A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
     is out of range holds no date.
     """
-    # The encoding is documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); the MSH's Date reads
-    # right (2026-10-26), and its Time, a counter, as seconds since midnight.
+    # As another MasterBus implementation documents it; a MasterShunt's Date reads right.
     if value != value or not 0 < value < 1e9 or value != int(value):
         return None
     year, rest = divmod(int(value), DATE_YEAR)
@@ -130,15 +130,13 @@ def date_text(value: float) -> str | None:
 def date_value(text: str) -> float:
     """Return the number a date value holds for *text*, a date written 'YYYY-MM-DD'.
 
-    Raise ValueError if *text* is not a date of that form.
+    Raise ValueError if *text* is not a date of that form, or no day of the calendar.
     """
-    parts = text.strip().split("-")
     try:
-        year, month, day = (int(part) for part in parts)
+        year, month, day = (int(part) for part in text.strip().split("-"))
+        datetime.date(year, month, day)
     except ValueError:
         raise ValueError(f"{text!r} is not a date, expected YYYY-MM-DD") from None
-    if len(parts) != 3 or not (year >= 1 and 1 <= month <= 12 and 1 <= day <= 31):
-        raise ValueError(f"{text!r} is not a date, expected YYYY-MM-DD")
     return float(year * DATE_YEAR + month * 32 + day)
 
 
@@ -243,22 +241,8 @@ class Value:
         its default; an EasyView lists one after each of its eventable switches.
         """
         no_minimum = self.minimum is None or self.minimum != self.minimum
-        return not self.name and self.writeable and no_minimum and self.maximum == 65535 and self.default == 65535
-
-    @staticmethod
-    def writer_address(value: float) -> Address | None:
-        """Return the master's address *value* holds, read from a writer register, or None if it holds none.
-
-        The frame naming the writer puts the master's high field and the three bytes of its low field into
-        the register, which reads back as a float32 of those four bytes; a float32 that is no such address,
-        0 or the register's default among them, holds none.
-        """
-        if value != value or not sendable(value):
-            return None
-        data = struct.pack("<f", value)
-        if not 0 < data[0] <= 0x1F:
-            return None
-        return Address(data[0], int.from_bytes(data[1:4], "little") & 0x3FFFF)
+        return (not self.name and self.writeable and no_minimum
+                and self.maximum == self.step == self.default == 65535)
 
     @property
     def writer(self) -> str:
@@ -383,20 +367,17 @@ class Value:
         """Return *value* as text for this value.
 
         That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-        'n/a' for NaN, else the number with the step's precision; a writer register holding a master's address
-        shows that address (see writer_address()). Behind the number, in parentheses, a date
-        value shows its date (see date_text()) and a counter value of a minute or more its whole seconds as
-        a duration (see duration_text()).
+        'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+        value shows its date (see date_text()), and a time value of whole seconds, 0 aside, the seconds as a
+        duration (see duration_text()).
         """
         if value is None:
             return "-"
         if value != value:  # NaN: the device has no value yet
             return "n/a"
-        if self.is_writer_register and (writer := self.writer_address(value)):
-            return str(writer)
         if self.visualization == VIS_DATE and (date := date_text(value)):
             return f"{int(value)} ({date})"
-        if self.visualization == VIS_COUNTER and 60 <= value < 1e9 and value == int(value):
+        if self.visualization == VIS_TIME and 0 < value < 1e9 and value == int(value):
             return f"{int(value)} ({duration_text(value)})"
         if self.visualization in LISTED and 0 <= value < len(self.options) and value == int(value):
             return self.options[int(value)]

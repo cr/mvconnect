@@ -38,9 +38,9 @@ from mvconnect.pages import (
     PAGE_BY_NAME,
     PAGES,
     VIS_ACTION,
-    VIS_COUNTER,
     VIS_DATE,
     VIS_DEVICE,
+    VIS_TIME,
     Page,
     PageReader,
     PageTable,
@@ -422,6 +422,11 @@ class System:
         """
         return PageReader(self.bus, device.address).write_value(table.page, index, value)
 
+    @property
+    def host(self) -> Address:
+        """Return this computer's address on the bus."""
+        return self.bus.host
+
     def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
         """Name this computer as the writer of the value at *index* of *table*'s page.
 
@@ -448,18 +453,18 @@ class System:
         device or command value are read from the device first, since they follow the bus. The text is checked
         against the value's range, entries or length and the device's writeable flag, and a check that fails
         raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
-        Latin-1, which a device's text cannot hold, raises ValueError. A write to a switch (an alarm value,
-        or an action or flag value of range 0..1) is followed by the frame that names this computer as the
-        writer (see name_writer()), unless the index after the switch is a value of the page other than the
-        register for the writer's address (see Value.is_writer_register). A device
-        value takes nothing but a device among its entries, or none, *force* or not: a text that names no
-        device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
-        *timeout* is for finding the device.
+        Latin-1, which a device's text cannot hold, raises ValueError. A device value takes nothing but a device
+        among its entries, or none, *force* or not: a text that names no device on the bus, or more than one,
+        or a device that is not among the entries, raises AddressError; *timeout* is for finding the device.
         none chooses the empty entry or, where there is none, the value just past the entries, which is how a
         CHG clears an event target (on a device value that holds a plain index, the read-back then says the
         write did not take). The device checks again and may refuse (ValueError); a device that does not
         acknowledge is read back anyway, with a warning. A text value whose text cannot be read raises
         TimeoutError: before the write, before anything is sent, or after a write it does not acknowledge.
+
+        A write to a switch (an alarm value, or an action or flag value of range 0..1) is followed by the frame
+        that names this computer as the writer (see name_writer()), unless the index after the switch is a
+        value of the page other than the register for the writer's address (see Value.is_writer_register).
         """
         label = self._label(device, table, value)
         if not value.writeable and not force:
@@ -498,8 +503,8 @@ class System:
 
         Write the default, read it back and return a Written. Raise ValueError where there is no default to
         return to (none given, or a text, device or command value) and for an action value, whose default would
-        carry the action out; raise Refused where the device marks the value read-only, or for a counter or a
-        date, which *force* skips.
+        carry the action out; raise Refused where the device marks the value read-only, or for a time or a date,
+        which *force* skips. A switch's reset names the writer as its write does (see write()).
         """
         label = self._label(device, table, value)
         default = value.default_value
@@ -507,11 +512,11 @@ class System:
             raise ValueError(f"{label}: no default to reset to")
         if value.visualization == VIS_ACTION:
             raise ValueError(f"{label}: an action has no state to reset; writing its default would carry it out")
-        if value.visualization in (VIS_COUNTER, VIS_DATE) and not force:
+        if value.visualization in (VIS_TIME, VIS_DATE) and not force:
             raise Refused(f"{label}: a {value.type_name} is not reset to a default")
         if not value.writeable and not force:
             raise Refused(f"{label}: the device marks this value read-only")
-        return self._send(device, table, value, default)
+        return self._send(device, table, value, default, name_writer=self._names_writer(table, value))
 
     @staticmethod
     def _label(device: Device, table: PageTable, value: Value) -> str:
@@ -546,8 +551,11 @@ class System:
 
     @staticmethod
     def _names_writer(table: PageTable, value: Value) -> bool:
-        """Tell whether a write to *value* is followed by the frame naming the writer: a switch whose next
-        index is no value of the page, or is the register for the writer's address."""
+        """Tell whether a write to *value* of *table*'s page is followed by the frame naming the writer.
+
+        That is a write to a switch whose next index is no value of the page, or is the register for the
+        writer's address.
+        """
         after = table.values.get(value.index + 1)
         return value.is_switch and (after is None or after.is_writer_register)
 

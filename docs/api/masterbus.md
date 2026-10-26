@@ -280,11 +280,10 @@ class Device()
 
 A device on the bus.
 
-It holds its *address*; the four *info* bytes of its announcement (see event_counter and flash_mode; the
-rest of their meaning is not yet known); its *product* number such as 77020100; its *serial* number; its
-*product_name* as the device reports it, '<type> <name>'; its hardware *revision*; and its firmware
-*version*, 'major.minor'. Everything but the address and the info bytes is filled in by
-MasterBus.identify().
+It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
+*product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
+'<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
+address and the info bytes is filled in by MasterBus.identify().
 
 <a id="mvconnect.masterbus.Device.address"></a>
 
@@ -346,20 +345,6 @@ def name() -> str
 ```
 
 Return the name given to the device: the product name without its type.
-
-<a id="mvconnect.masterbus.Device.event_counter"></a>
-
-#### event\_counter
-
-```python
-@property
-def event_counter() -> int | None
-```
-
-Return the device's event counter, the first info byte of its announcement, or None without one.
-
-The counter steps up when the device's state changes: a login or logout, a value written, and other
-changes; a device that announces a new count is one to read again.
 
 <a id="mvconnect.masterbus.Device.flash_mode"></a>
 
@@ -431,6 +416,17 @@ HOST_ADDRESS), waiting *reply_timeout* seconds for each reply (0.3 by default) a
 *retries* times (2 by default) before giving up. Every method that sends raises LinkError once the link
 has failed.
 
+<a id="mvconnect.masterbus.MasterBus.host"></a>
+
+#### host
+
+```python
+@property
+def host() -> Address
+```
+
+Return this computer's address on the bus: the one given, or else the one open() found.
+
 <a id="mvconnect.masterbus.MasterBus.open"></a>
 
 #### open
@@ -440,6 +436,9 @@ def open() -> MasterBus
 ```
 
 Open the link and return the bus.
+
+Without a host address given, the bus takes the one host_address() computes from the link's serial
+number, where the link says one.
 
 <a id="mvconnect.masterbus.MasterBus.send"></a>
 

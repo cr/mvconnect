@@ -100,7 +100,7 @@ def _reply(data: bytes) -> str:
 
 
 def _is_address_frame(data: bytes) -> bool:
-    # The frame MasterAdjust sends after writing an eventable value: its own address, 0x14 then the low field.
+    # The frame that names the writer after a switch is written: its address, 0x14 then the low field.
     # As a float, these bytes would be a denormal no write uses: the top address byte is at most 3.
     return len(data) == 6 and data[2] == MASTER_ADDRESS_TYPE and data[5] <= 0x03
 

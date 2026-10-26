@@ -233,6 +233,8 @@ class StateServer:
         if method == "devices":
             return [encode_device(d) for d in s.devices(float(p.get("timeout", self.timeout)),
                                                         refresh=bool(p.get("refresh")))]
+        if method == "host":
+            return str(s.host)
         device = decode_device(p["device"])
         if method == "login_level":
             return s.login_level(device)
@@ -291,8 +293,9 @@ class StateSystem(System):
     """A System whose bus conversations go to the server's state; everything else runs here.
 
     Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
-    methods that talk to the bus (devices, traffic, login_level, login, tables, read_values, read_options,
-    read_text, write_value, write_text, name_writer) send a request to the server instead and return what it
+    methods that talk to the bus (devices, traffic, host, login_level, login, tables, read_values,
+    read_options, read_text, write_value, write_text, name_writer) send a request to the server instead and
+    return what it
     answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
     there. listen() is not served: the server's traffic comes through traffic().
     """
@@ -450,6 +453,11 @@ class StateSystem(System):
         """Ask the server; see System.write_text()."""
         return str(self.call("write_text", device=encode_device(device), page=table.page.name, index=index,
                              text=text))
+
+    @property
+    def host(self) -> Address:
+        """Ask the server; see System.host."""
+        return Address.parse(str(self.call("host")))
 
     def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
         """Ask the server; see System.name_writer()."""

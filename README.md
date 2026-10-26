@@ -70,21 +70,23 @@ alpha pro` shows the "Alpha pro" groups.
 `--set` takes a number, an option name for a list or command value, or
 on/off; a device value takes a device among its entries by its name, type
 or address, or `none`; a text value the text; a date value a date written
-`YYYY-MM-DD`, which a listing shows behind the number, as it shows a
-counter's seconds as a duration (as another MasterBus implementation
-documents it; the MasterShunt's Date and Time read right). It checks the value against
+`YYYY-MM-DD`. A listing shows a date's day behind its number, and a time's
+seconds as a duration, as another MasterBus implementation documents them
+and as the MasterShunt's Date and Time read. It checks the value against
 the range and the writeable flag (`--force` skips both; a device value's
 device must be among the entries, forced or not), writes it, and shows the
-value before and after. A write to a switch (an alarm, or a button or
-flag of range 0..1) is followed by the frame that names this computer as
-the writer, as MasterAdjust sends it and as a relay or button may need
-before it acts (so another implementation found); the EasyView takes it,
-nothing else on my bus has a place for it;
-`--reset` writes the default the device gives; never to a button, which
-it would press, nor to a counter or a date without `--force`. Either needs the words to
-select exactly one value; otherwise the matches are listed and nothing is
-written. An index alone is one value per page, so a write by index names
-the page. The device checks the value again and may refuse it.
+value before and after. `--reset` writes the default the device gives;
+never to a button, which it would press, nor to a time or a date without
+`--force`. Either needs the words to select exactly one value; otherwise
+the matches are listed and nothing is written. An index alone is one value
+per page, so a write by index names the page. The device checks the value
+again and may refuse it.
+
+A write to a switch, an alarm or a button or flag of range 0..1, is
+followed by the frame that names this computer as the writer, as
+MasterAdjust sends it and as a relay or button may need before it acts
+(so another implementation found). The EasyView takes it; nothing else on
+my bus has a place for it.
 
 Firmware:
 

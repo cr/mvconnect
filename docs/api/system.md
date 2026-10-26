@@ -371,6 +371,17 @@ Write *value* at *index* of *table*'s page and return what the device echoes.
 
 See PageReader.write_value().
 
+<a id="mvconnect.system.System.host"></a>
+
+#### host
+
+```python
+@property
+def host() -> Address
+```
+
+Return this computer's address on the bus.
+
 <a id="mvconnect.system.System.name_writer"></a>
 
 #### name\_writer
@@ -416,18 +427,18 @@ bus by its name, type or address, which must be among the value's entries, or no
 device or command value are read from the device first, since they follow the bus. The text is checked
 against the value's range, entries or length and the device's writeable flag, and a check that fails
 raises Refused, which *force* skips: a number is then sent as typed; a text with a character outside
-Latin-1, which a device's text cannot hold, raises ValueError. A write to a switch (an alarm value,
-or an action or flag value of range 0..1) is followed by the frame that names this computer as the
-writer (see name_writer()), unless the index after the switch is a value of the page other than the
-register for the writer's address (see Value.is_writer_register). A device
-value takes nothing but a device among its entries, or none, *force* or not: a text that names no
-device on the bus, or more than one, or a device that is not among the entries, raises AddressError;
-*timeout* is for finding the device.
+Latin-1, which a device's text cannot hold, raises ValueError. A device value takes nothing but a device
+among its entries, or none, *force* or not: a text that names no device on the bus, or more than one,
+or a device that is not among the entries, raises AddressError; *timeout* is for finding the device.
 none chooses the empty entry or, where there is none, the value just past the entries, which is how a
 CHG clears an event target (on a device value that holds a plain index, the read-back then says the
 write did not take). The device checks again and may refuse (ValueError); a device that does not
 acknowledge is read back anyway, with a warning. A text value whose text cannot be read raises
 TimeoutError: before the write, before anything is sent, or after a write it does not acknowledge.
+
+A write to a switch (an alarm value, or an action or flag value of range 0..1) is followed by the frame
+that names this computer as the writer (see name_writer()), unless the index after the switch is a
+value of the page other than the register for the writer's address (see Value.is_writer_register).
 
 <a id="mvconnect.system.System.write_default"></a>
 
@@ -444,8 +455,8 @@ Reset *value* of *table*'s page on *device* to the default the device gives.
 
 Write the default, read it back and return a Written. Raise ValueError where there is no default to
 return to (none given, or a text, device or command value) and for an action value, whose default would
-carry the action out; raise Refused where the device marks the value read-only, or for a counter or a
-date, which *force* skips.
+carry the action out; raise Refused where the device marks the value read-only, or for a time or a date,
+which *force* skips. A switch's reset names the writer as its write does (see write()).
 
 <a id="mvconnect.system.System.find_values"></a>
 
