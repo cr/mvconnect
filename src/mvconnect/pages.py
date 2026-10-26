@@ -115,7 +115,8 @@ def date_text(value: float) -> str | None:
     A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
     is out of range holds no date.
     """
-    # The encoding is documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); not yet seen here.
+    # The encoding is documented in devnotes/masteradjust-re.md (keesverruijt/masterbus); the MSH's Date reads
+    # right (2026-10-26), and its Time, a counter, as seconds since midnight.
     if value != value or not 0 < value < 1e9 or value != int(value):
         return None
     year, rest = divmod(int(value), DATE_YEAR)
