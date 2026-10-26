@@ -1234,3 +1234,13 @@ def test_a_page_the_device_has_not_got_is_empty(bus, tmp_path, monkeypatch):
         assert sorted(tables) == ["alarm", "config", "history", "monitor"] and tables["alarm"].values == {}
     finally:
         NO_COUNT.discard(0x07)
+
+
+def test_a_writer_register_shows_the_address_it_holds():
+    register = Value(3, name="", writeable=True, minimum=float("nan"), maximum=65535.0, step=65535.0, default=65535.0)
+    held = struct.unpack("<f", bytes([0x14, 0x4D, 0x04, 0x03]))[0]  # 14:3044d as the frame puts it
+    assert Value.writer_address(held) == Address(0x14, 0x3044D) and register.format(held) == "14:3044d"
+    assert register.format(0.0) == "0" and register.format(65535.0) == "65535"
+    assert register.format(float("nan")) == "n/a"
+    assert Value.writer_address(65535.0) is None and Value.writer_address(float("inf")) is None
+    assert Value(3).format(held) == "0"  # a number is just a number, and a tiny one

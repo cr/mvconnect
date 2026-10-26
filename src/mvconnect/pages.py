@@ -245,6 +245,21 @@ class Value:
         no_minimum = self.minimum is None or self.minimum != self.minimum
         return not self.name and self.writeable and no_minimum and self.maximum == 65535 and self.default == 65535
 
+    @staticmethod
+    def writer_address(value: float) -> Address | None:
+        """Return the master's address *value* holds, read from a writer register, or None if it holds none.
+
+        The frame naming the writer puts the master's high field and the three bytes of its low field into
+        the register, which reads back as a float32 of those four bytes; a float32 that is no such address,
+        0 or the register's default among them, holds none.
+        """
+        if value != value or not sendable(value):
+            return None
+        data = struct.pack("<f", value)
+        if not 0 < data[0] <= 0x1F:
+            return None
+        return Address(data[0], int.from_bytes(data[1:4], "little") & 0x3FFFF)
+
     @property
     def writer(self) -> str:
         """Return how a write reaches this value: 'float' or 'text'."""
@@ -368,7 +383,8 @@ class Value:
         """Return *value* as text for this value.
 
         That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-        'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+        'n/a' for NaN, else the number with the step's precision; a writer register holding a master's address
+        shows that address (see writer_address()). Behind the number, in parentheses, a date
         value shows its date (see date_text()) and a counter value of a minute or more its whole seconds as
         a duration (see duration_text()).
         """
@@ -376,6 +392,8 @@ class Value:
             return "-"
         if value != value:  # NaN: the device has no value yet
             return "n/a"
+        if self.is_writer_register and (writer := self.writer_address(value)):
+            return str(writer)
         if self.visualization == VIS_DATE and (date := date_text(value)):
             return f"{int(value)} ({date})"
         if self.visualization == VIS_COUNTER and 60 <= value < 1e9 and value == int(value):
