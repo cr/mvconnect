@@ -91,3 +91,11 @@ def no_ending_announced():
     masterbus._announced = False
     yield
     masterbus._announced = False
+
+
+@pytest.fixture(autouse=True)
+def no_pause_between_read_backs(monkeypatch):
+    """A written value is read back until it shows, 0.2 s apart; a test of a write that never shows would
+    wait that out for nothing. The test of the read-backs themselves sets a pause of its own."""
+    from mvconnect import system
+    monkeypatch.setattr(system, "READ_BACK_PAUSE", 0.0)

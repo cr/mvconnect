@@ -374,6 +374,14 @@ class MasterBus:
         """Close the link."""
         self.link.close()
 
+    def reopen(self) -> MasterBus:
+        """Close the link and open it again, as after it was unplugged; return the bus.
+
+        Raise LinkError while the link cannot be opened. The address open() found is kept.
+        """
+        self.link.close()
+        return self.open()
+
     def __enter__(self) -> MasterBus:
         return self.open()
 
@@ -383,30 +391,25 @@ class MasterBus:
 
     # -- discovery
 
-    def enumerate(self, timeout: float = 1.5) -> list[Device]:
+    def enumerate(self, timeout: float = 1.5, settle: float = 1.0) -> list[Device]:
         """Ask every device to announce itself and return those that did.
 
-        Return the devices that announced themselves within *timeout* seconds (1.5 by default), in address
-        order, each a Device with its address and info bytes only. An announcement that does not parse is
-        logged and left out.
+        Listen *timeout* seconds (1.5 by default) for announcements, and longer while devices keep appearing:
+        until *settle* seconds (1.0 by default) have passed since the last new device announced itself, so
+        that a slow one is not the last heard. Return the devices in address order, each a Device with its
+        address and info bytes only. An announcement that does not parse is logged and left out.
         """
         logger.info("enumerating the bus")
         found: dict[Address, Device] = {}
+        deadline = time.monotonic() + timeout
         with self._conversation():
             self.send(Frame(KIND_ENUMERATE, self.host))
-            for frame in self._queue.until(time.monotonic() + timeout):
-                if frame.kind != KIND_ANNOUNCE:
-                    continue
-                try:
-                    ann = AnnounceInfo.parse(frame.data)
-                except ValueError as e:
-                    logger.warning(f"ignoring announcement from {frame.address}: {e}")
-                    continue
-                if ann.address != frame.address:
-                    logger.warning(f"announcement from {frame.address} names {ann.address}")
-                if ann.address not in found:
-                    found[ann.address] = Device(ann.address, info=ann.info)
-                    logger.debug(f"device {ann.address} info {ann.info.hex(' ')}")
+            while time.monotonic() < deadline:  # moved on by every new device, so until() is entered again
+                for frame in self._queue.until(deadline):
+                    device = self._announced(frame)
+                    if device is not None and device.address not in found:
+                        found[device.address] = device
+                        deadline = max(deadline, time.monotonic() + settle)
         logger.info(f"{len(found)} devices announced themselves")
         reports = getattr(self.link, "reports_in", None)  # a HidLink counts them; another link may not
         if not found and reports is not None:
@@ -418,6 +421,21 @@ class MasterBus:
                 logger.debug(f"the link sent {link.reports_in} reports with {link.frames_in} frames, none an "
                              "announcement: is the MasterBus network powered, and the link's bus cable connected?")
         return [found[a] for a in sorted(found)]
+
+    @staticmethod
+    def _announced(frame: Frame) -> Device | None:
+        """Return the Device *frame* announces, or None for any other frame or one that does not parse."""
+        if frame.kind != KIND_ANNOUNCE:
+            return None
+        try:
+            ann = AnnounceInfo.parse(frame.data)
+        except ValueError as e:
+            logger.warning(f"ignoring announcement from {frame.address}: {e}")
+            return None
+        if ann.address != frame.address:
+            logger.warning(f"announcement from {frame.address} names {ann.address}")
+        logger.debug(f"device {ann.address} info {ann.info.hex(' ')}")
+        return Device(ann.address, info=ann.info)
 
     # -- requests
 

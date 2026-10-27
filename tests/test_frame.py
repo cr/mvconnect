@@ -250,3 +250,40 @@ def test_a_link_that_cannot_be_opened_is_one_concise_line(monkeypatch, caplog, p
         assert str(e.value) == f"cannot open the MasterBus USB Link at {path.decode()}: open failed"
         assert not hasattr(e.value, "hint")
     assert any("NOT write" in r.getMessage() for r in caplog.records if r.levelname == "DEBUG")  # the details
+
+
+def test_a_link_opened_again_is_found_again(monkeypatch):
+    """Plugged in again, the link may be at another path: a link that found itself finds itself again."""
+    import time
+
+    from mvconnect import hidlink
+    from mvconnect.hidlink import HidLink, LinkInfo
+
+    class Device:
+        opened = []
+
+        def open_path(self, path):
+            self.opened.append(path)
+
+        def set_nonblocking(self, flag):
+            pass
+
+        def read(self, size, timeout_ms):
+            time.sleep(timeout_ms / 1000)
+            return []
+
+        def close(self):
+            pass
+    paths = [b"/dev/first", b"/dev/second"]
+    monkeypatch.setattr(hidlink.hid, "device", Device)
+    monkeypatch.setattr(hidlink, "find_link", lambda: LinkInfo(paths.pop(0), "", "", ""))
+    link = HidLink().open(lambda frame: None)
+    link.close()
+    link.open(lambda frame: None)
+    link.close()
+    assert Device.opened == [b"/dev/first", b"/dev/second"]
+    given = HidLink(LinkInfo(b"/dev/given", "", "", "")).open(lambda frame: None)
+    given.close()
+    given.open(lambda frame: None)
+    given.close()
+    assert Device.opened[2:] == [b"/dev/given", b"/dev/given"]  # a link given stays the one given

@@ -2,6 +2,7 @@
 
 import dataclasses
 import struct
+import time
 
 import pytest
 from expect import has, line_with, logged, mentions
@@ -10,7 +11,7 @@ from mvconnect import cache
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
 from mvconnect.pages import PAGE_BY_NAME, PAGES, VIS_FLAG, PageReader, Value, table_from_dict, table_to_dict
-from mvconnect.system import AddressError, Refused, System
+from mvconnect.system import READ_BACKS, AddressError, Refused, System
 
 SHUNT = Address(0x1B, 0x0CAD9)
 ELSEWHERE = Address(0x0A, 0x1062B)  # a charger the fake bus does not have
@@ -495,6 +496,37 @@ def test_a_write_the_device_stores_otherwise_is_warned_of(config, bus):
     answering(bus, clamped)
     written = system.write(device, table, table.values[0], "24")
     assert written.after == "36" and written.warnings
+    reads = [f for f in bus.link.sent if f.kind == 0x37 and f.data == bytes([0, 0])]
+    assert len(reads) == 1 + READ_BACKS  # once before the write, then read back until given up
+
+
+def test_a_slow_switch_is_read_back_until_it_shows(switch, bus, monkeypatch):
+    """A relay takes its time: the write is echoed, and the value shows the switch only a few reads later."""
+    from mvconnect import system as sys_
+    monkeypatch.setattr(sys_, "READ_BACK_PAUSE", 0.01)
+    system, device, table, button = switch
+    reads = [0]
+    asked = []  # the last request for value 7 picked: a read (2 bytes) or a write (6)
+
+    def picked(f):
+        if f.kind == 0x37 and f.data[:2] == bytes([7, 0]) and f.data[2:3] != b"\x14":
+            asked.append(f.data)
+            return True
+        return False
+
+    def slowly(kind, data):
+        if len(asked[-1]) == 6:  # the echo of the write: the relay has not moved yet
+            VALUES[0x37][7] = 0.0
+            return kind, data
+        reads[0] += 1
+        if reads[0] >= 3:
+            VALUES[0x37][7] = 1.0
+        return kind, data[:2] + struct.pack("<f", VALUES[0x37][7])
+    answering(bus, slowly, to=picked)
+    started = time.monotonic()
+    written = system.write(device, table, button, "on", timeout=0.02)
+    assert written.took and not written.warnings and VALUES[0x37][7] == 1.0
+    assert reads[0] == 3 and time.monotonic() - started >= 0.01  # read once before, then twice back, a pause between
 
 
 def test_a_device_value_is_written_as_its_entry_alone(config, bus):

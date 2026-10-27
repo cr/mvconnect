@@ -326,3 +326,40 @@ def test_the_bus_takes_its_address_from_the_link():
     assert given.host == Address(0x14, 0x7)
     assert MasterBus(FakeLink(), reply_timeout=0.05).open().host == HOST_ADDRESS  # a link without a serial
 
+
+
+class SlowAnnouncers:
+    """A link whose devices announce themselves *late* seconds apart, the first at once."""
+
+    def __init__(self, late, count):
+        self.late, self.count = late, count
+        self.listener = None
+        self.sent = []
+
+    def open(self, listener):
+        self.listener = listener
+        return self
+
+    def close(self):
+        pass
+
+    def send(self, *frames, timeout=1.0):
+        import threading
+        self.sent.extend(frames)
+        for n in range(self.count):
+            frame = Frame(KIND_ANNOUNCE, Address(0x1B, 0x0CAD0 + n), bytes([0x1B, 0xD0 + n, 0xCA, 0, 0, 2, 0, 0]))
+            threading.Timer(n * self.late, self.listener, [frame]).start()
+
+
+def test_enumerate_listens_on_while_devices_keep_appearing():
+    bus = MasterBus(SlowAnnouncers(0.08, 3), reply_timeout=0.05).open()
+    # the second and third announce after the window, each within the settle time of the one before
+    assert len(bus.enumerate(timeout=0.05, settle=0.15)) == 3
+    assert len(MasterBus(SlowAnnouncers(0.08, 3), reply_timeout=0.05).open().enumerate(timeout=0.05, settle=0.02)) == 1
+
+
+def test_enumerate_ends_at_the_window_when_nothing_new_appears():
+    bus = MasterBus(SlowAnnouncers(0.0, 1), reply_timeout=0.05).open()
+    started = time.monotonic()
+    assert len(bus.enumerate(timeout=0.2, settle=0.1)) == 1
+    assert 0.15 <= time.monotonic() - started < 0.4  # the settle time ran out inside the window, which did not grow

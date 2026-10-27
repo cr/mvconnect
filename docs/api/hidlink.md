@@ -153,7 +153,8 @@ def open(listener: Callable[[Frame], None]) -> HidLink
 Open the link, start the reader thread and return the link.
 
 The reader thread hands every frame received to *listener*. Without a LinkInfo, the first link found
-is opened, with a warning when there are several. Raise LinkError if no link is found or it cannot be
+is opened, with a warning when there are several, and found again when a closed link is opened again:
+plugged in again, it may be at another path. Raise LinkError if no link is found or it cannot be
 opened.
 
 <a id="mvconnect.hidlink.HidLink.close"></a>

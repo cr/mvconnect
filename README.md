@@ -80,7 +80,8 @@ never to a button, which it would press, nor to a time or a date without
 `--force`. Either needs the words to select exactly one value; otherwise
 the matches are listed and nothing is written. An index alone is one value
 per page, so a write by index names the page. The device checks the value
-again and may refuse it.
+again and may refuse it. The value is read back until it shows what was
+written, up to five times 0.2 s apart, since a relay takes its time.
 
 A write to a switch, an alarm or a button or flag of range 0..1, is
 followed by the frame that names this computer as the writer, as
@@ -119,12 +120,14 @@ link --debug` shows its device node and whether this user may open it;
 `--debug` on any command also logs every HID device of Mastervolt's, the
 report descriptor, each report in and out, and the transmit credits.
 
-Every command opens the link, listens for the devices and identifies
-them before it reads what it needs, which takes a while. `mvconnect
-server` does that once and holds the link; the commands run through it
-skip it. It owns the link while it runs, so on that computer run the
-commands through it too. A server that cannot open the link says so,
-and does not start:
+Every command opens the link, listens for the devices (`--timeout`
+seconds, and longer while they keep appearing) and identifies them
+before it reads what it needs, which takes a while. `mvconnect server`
+does that once and holds the link; the commands run through it skip it.
+It owns the link while it runs, so on that computer run the commands
+through it too. A server that cannot open the link says so, and does
+not start; a link unplugged while it runs is looked for every 2 s and
+opened again, and a command meanwhile is told the link is lost:
 
     mvconnect server --bind 127.0.0.1
     MVCONNECT_REMOTE=localhost mvconnect data msh monitor

@@ -51,6 +51,8 @@ from mvconnect.words import fold, select
 logger = logging.getLogger(__name__)
 
 TRAFFIC_BACKLOG = 10_000  # frames held for a reader of the traffic that lags; more are dropped
+READ_BACKS = 5  # reads of a written value until it shows what was written: a relay takes its time
+READ_BACK_PAUSE = 0.2  # seconds between two of them
 
 
 class AddressError(Exception):
@@ -564,7 +566,8 @@ class System:
         """Make the write itself, after the checks, and the read-back; return a Written.
 
         *wanted* is the number or text to write. A write the device does not acknowledge is read back anyway,
-        with a warning. A text value whose text cannot be read raises TimeoutError. With *name_writer*, the
+        with a warning. A number is read back until it shows (see _read_back()). A text value whose text cannot
+        be read raises TimeoutError. With *name_writer*, the
         frame naming this computer as the writer follows the write, acknowledged or not, and a device that
         refuses it or does not answer it is warned of.
         """
@@ -597,12 +600,34 @@ class System:
                 warnings.append(f"{label}: the device did not answer the frame naming this computer as the writer")
             elif not named:
                 warnings.append(f"{label}: the device refused the frame naming this computer as the writer")
-        after = self.read_values(device, table, [value.index])[value.index]
-        took = after is not None and abs(after - wanted) <= (value.step or 1e-6) / 2
+        after = self._read_back(device, table, value, wanted)
+        took = self._holds(value, after, wanted)
         if not took:
             warnings.append(f"{label}: wanted {value.format(wanted)}, device echoed {value.format(echoed)}, "
                             f"reads back {value.format(after)}")
         return Written(value, value.format(before), value.format(after), value.format(wanted), warnings, took)
+
+    def _read_back(self, device: Device, table: PageTable, value: Value, wanted: float) -> float | None:
+        """Read *value* of *table*'s page on *device* back after a write and return what it holds.
+
+        Return *wanted* as soon as a read shows it, reading up to READ_BACKS times, READ_BACK_PAUSE seconds
+        apart, since a relay takes its time to switch; otherwise what the last read holds.
+        """
+        for n in range(READ_BACKS):
+            if n:
+                time.sleep(READ_BACK_PAUSE)
+            after = self.read_values(device, table, [value.index])[value.index]
+            if self._holds(value, after, wanted):
+                if n:
+                    logger.debug(f"{self._label(device, table, value)}: shows {value.format(after)} after "
+                                 f"{n + 1} reads")
+                break
+        return after
+
+    @staticmethod
+    def _holds(value: Value, after: float | None, wanted: float) -> bool:
+        """Tell whether *after*, as *value* read back, is *wanted*: within half a step of it."""
+        return after is not None and abs(after - wanted) <= (value.step or 1e-6) / 2
 
     def _send_device(self, device: Device, table: PageTable, value: Value, wanted: float) -> Written:
         """Write entry *wanted* of the device value *value* and read back which device it holds now.

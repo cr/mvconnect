@@ -476,19 +476,32 @@ def close() -> None
 
 Close the link.
 
+<a id="mvconnect.masterbus.MasterBus.reopen"></a>
+
+#### reopen
+
+```python
+def reopen() -> MasterBus
+```
+
+Close the link and open it again, as after it was unplugged; return the bus.
+
+Raise LinkError while the link cannot be opened. The address open() found is kept.
+
 <a id="mvconnect.masterbus.MasterBus.enumerate"></a>
 
 #### enumerate
 
 ```python
-def enumerate(timeout: float = 1.5) -> list[Device]
+def enumerate(timeout: float = 1.5, settle: float = 1.0) -> list[Device]
 ```
 
 Ask every device to announce itself and return those that did.
 
-Return the devices that announced themselves within *timeout* seconds (1.5 by default), in address
-order, each a Device with its address and info bytes only. An announcement that does not parse is
-logged and left out.
+Listen *timeout* seconds (1.5 by default) for announcements, and longer while devices keep appearing:
+until *settle* seconds (1.0 by default) have passed since the last new device announced itself, so
+that a slow one is not the last heard. Return the devices in address order, each a Device with its
+address and info bytes only. An announcement that does not parse is logged and left out.
 
 <a id="mvconnect.masterbus.MasterBus.request"></a>
 

@@ -28,6 +28,18 @@ listing keeps the grouping.
 
 frames held for a reader of the traffic that lags; more are dropped
 
+<a id="mvconnect.system.READ_BACKS"></a>
+
+#### READ\_BACKS
+
+reads of a written value until it shows what was written: a relay takes its time
+
+<a id="mvconnect.system.READ_BACK_PAUSE"></a>
+
+#### READ\_BACK\_PAUSE
+
+seconds between two of them
+
 <a id="mvconnect.system.AddressError"></a>
 
 ## AddressError

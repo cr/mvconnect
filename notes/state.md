@@ -45,6 +45,12 @@ does not keep one.
 While the server runs, nothing else can open the link. That is expected
 and accepted: on that computer, run commands through the server.
 
+A link that fails under the server (unplugged: its reader stops with a
+failure) is looked for every 2 s and opened again, found anew since it
+may be at another path, and the bus is enumerated again once it is
+back. Meanwhile a request is a LinkError saying the link is lost; a
+monitor's stream ends with that error. Added 2026-10-27.
+
 ## Where it runs
 
 `mvconnect server` (fireaid's remote server) opens the link in a thread

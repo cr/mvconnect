@@ -364,7 +364,7 @@ class Tool:
             set: The value to write; quoted when it has spaces: --set "Single device".
             reset: Write the value's default instead.
             force: Send it even if the device marks the value read-only or the value is out of range.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             cache: Keep a device's names and units in ~/.cache/mvconnect; --nocache reads them again and updates it.
             debug: Log every frame on the link, and say where each line comes from.
         """
@@ -514,7 +514,7 @@ class Tool:
             level: installer, distributor or service.
             password: The level's password, a number (asked for when not given).
             status: Only show the level each device is logged in at.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.login, debug)
@@ -551,7 +551,7 @@ class Tool:
         """Log out on every device on the bus: login level 0, as MasterAdjust's Logout button sends.
 
         Args:
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.logout, debug)
@@ -617,7 +617,7 @@ class Tool:
 
         Args:
             filter: Only frames to or from these devices, comma separated, each an address, name or type.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.monitor, debug)

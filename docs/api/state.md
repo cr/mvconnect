@@ -67,7 +67,9 @@ A System on the open link, served on a Unix socket, one request on the bus at a 
 
 Create one serving *system* at *path* (socket_path() by default), enumerating the bus again every
 *re_enumerate* seconds so that a device plugged in later appears, and listening *timeout* seconds for
-announcements. The devices are identified once, so that a command skips the listen window.
+announcements. The devices are identified once, so that a command skips the listen window. A link that
+fails under the server, unplugged say, is looked for every *reopen* seconds and opened again; a request
+meanwhile is a LinkError that says the link is lost.
 
 <a id="mvconnect.state.StateServer.bind"></a>
 
