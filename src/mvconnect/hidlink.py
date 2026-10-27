@@ -227,15 +227,16 @@ class HidLink:
         plugged in again, it may be at another path. Raise LinkError if no link is found or it cannot be
         opened.
         """
-        if self._found:
+        if self._found or self.info is None:
             self.info = find_link()
+        info = self.info
         dev = hid.device()
-        logger.debug(f"opening {self.info.path!r} ({self.info.product!r} serial {self.info.serial!r})")
+        logger.debug(f"opening {info.path!r} ({info.product!r} serial {info.serial!r})")
         try:
-            dev.open_path(self.info.path)
+            dev.open_path(info.path)
         except (OSError, ValueError) as e:
-            logger.debug(f"open failed: {e}; {_access(self.info.path)}")  # who may open it: the details, for --debug
-            raise LinkError(f"cannot open the MasterBus USB Link {_name(self.info)}: {e}") from e
+            logger.debug(f"open failed: {e}; {_access(info.path)}")  # who may open it: the details, for --debug
+            raise LinkError(f"cannot open the MasterBus USB Link {_name(info)}: {e}") from e
         dev.set_nonblocking(0)
         self._dev = dev
         try:
@@ -250,7 +251,7 @@ class HidLink:
         self._stop.clear()
         self._reader = threading.Thread(target=self._read_loop, name="mvconnect-hid-reader", daemon=True)
         self._reader.start()
-        logger.info(f"opened the MasterBus USB Link {_name(self.info)}")
+        logger.info(f"opened the MasterBus USB Link {_name(info)}")
         return self
 
     def close(self) -> None:
