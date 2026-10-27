@@ -11,6 +11,7 @@ n gives the index of the group's n-th value.
 
 from __future__ import annotations
 
+import datetime
 import enum
 import logging
 import struct
@@ -80,7 +81,7 @@ VIS_LIST = 3  # option texts via attribute 0x26
 VIS_ALARM = 4
 VIS_ACTION = 5  # 0..1 or 0..2 push buttons: "Reset setup", "Start test", "Clear history"
 VIS_TEXT = 6  # a text such as "Device name"; the range is its length. MasterAdjust shows it, offers no edit
-VIS_COUNTER = 7  # history counters, read-only
+VIS_TIME = 7  # seconds: a time of day, or how long something lasted; read-only
 VIS_DATE = 8
 VIS_DEVICE = 9  # a device on the bus: "Event n target", "Master", "Slave n"; its entries are addresses (attribute 0x20)
 VIS_COMMAND = 10  # "Event n command": a command of the target device; its entries are texts (attribute 0x0F)
@@ -90,19 +91,61 @@ NO_DEFAULT = 65535.0  # how devices say a value has no default
 ENTRIES_MOST = 64  # how many entries a list is read for where its maximum does not say
 
 # How a write reaches a value: the ordinary write, kind = page.read, DLC 6 [idx16, float32], for every type
-# but text; MasterAdjust writes counters and dates as numbers too, and device and command values as the
+# but text; MasterAdjust writes times and dates as numbers too, and device and command values as the
 # entry's index. A text value holds the id of a device string; the text is written through the General
 # String request, four characters per frame (MasterBus.write_string).
-# After writing an eventable value, MasterAdjust sends one more frame to the NEXT index: kind =
-# page.read, DLC 6 [idx+1 as u16, 0x14, the low three bytes of its own address]. mvconnect does not
-# send it yet (see Value.eventable).
+# After writing a switch, MasterAdjust sends one more frame to the NEXT index: kind = page.read, DLC 6
+# [idx+1 as u16, 0x14, the low three bytes of its own address]: it names itself as the writer, and a relay
+# or an action does not act until it has come (so another MasterBus implementation found). The EasyView
+# lists the register at idx+1 as a value, unnamed, writeable, no range, 65535 as maximum, step and default,
+# and echoes the frame. PageReader.name_writer() sends it, System.write() after every switch.
 MASTER_ADDRESS_TYPE = 0x14  # the high field of a master's address (MasterAdjust, an EasyView): data[2] of that frame
 VIS_NAMES = {VIS_NUMBER: "number", VIS_FLAG: "flag", VIS_LIST: "list", VIS_ALARM: "alarm", VIS_ACTION: "action",
-             VIS_TEXT: "text", VIS_COUNTER: "counter", VIS_DATE: "date", VIS_DEVICE: "device",
+             VIS_TEXT: "text", VIS_TIME: "time", VIS_DATE: "date", VIS_DEVICE: "device",
              VIS_COMMAND: "command"}
 # One letter per type, for the attribute column of a listing (ls -l style)
 VIS_LETTERS = {VIS_NUMBER: "n", VIS_FLAG: "f", VIS_LIST: "l", VIS_ALARM: "a", VIS_ACTION: "b", VIS_TEXT: "t",
-               VIS_COUNTER: "c", VIS_DATE: "d", VIS_DEVICE: "D", VIS_COMMAND: "C"}
+               VIS_TIME: "T", VIS_DATE: "d", VIS_DEVICE: "D", VIS_COMMAND: "C"}
+
+
+DATE_YEAR = 416  # a date value is year * 416 + month * 32 + day, 416 being 13 * 32
+
+
+def date_text(value: float) -> str | None:
+    """Return the date *value* holds as 'YYYY-MM-DD', or None if it holds no date.
+
+    A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
+    is out of range holds no date.
+    """
+    # As another MasterBus implementation documents it; a MasterShunt's Date reads right.
+    if value != value or not 0 < value < 1e9 or value != int(value):
+        return None
+    year, rest = divmod(int(value), DATE_YEAR)
+    month, day = divmod(rest, 32)
+    if not (year >= 1 and 1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def date_value(text: str) -> float:
+    """Return the number a date value holds for *text*, a date written 'YYYY-MM-DD'.
+
+    Raise ValueError if *text* is not a date of that form, or no day of the calendar.
+    """
+    try:
+        year, month, day = (int(part) for part in text.strip().split("-"))
+        datetime.date(year, month, day)
+    except ValueError:
+        raise ValueError(f"{text!r} is not a date, expected YYYY-MM-DD") from None
+    return float(year * DATE_YEAR + month * 32 + day)
+
+
+def duration_text(seconds: float) -> str:
+    """Return *seconds*, a whole number of them, as 'H:MM:SS', with the days in front as 'Nd ' past a day."""
+    days, rest = divmod(int(seconds), 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, secs = divmod(rest, 60)
+    return (f"{days}d " if days else "") + f"{hours}:{minutes:02d}:{secs:02d}"
 
 
 def _slack(bound: float) -> float:
@@ -147,9 +190,9 @@ class Value:
 
         A value with options takes only their names, compared without regard to case, and gives the option's
         index: a number, an index among them, is no name. A switch, an alarm value or an action or flag value
-        of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. Any other value takes a
-        number. A number past a bound by less than a millionth of it gives the bound, since the bounds arrive
-        as float32.
+        of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. A date value takes a date
+        written 'YYYY-MM-DD' as well as a number (see date_value()). Any other value takes a number. A number
+        past a bound by less than a millionth of it gives the bound, since the bounds arrive as float32.
 
         Raise ValueError, which names the options where there are any, if *text* is none of those, is a number
         the bus cannot carry (see sendable()) or lies outside the range.
@@ -160,8 +203,10 @@ class Value:
                 if fold(option) == fold(t):
                     return float(n)
             raise ValueError(f"{text!r} is not one of {', '.join(repr(o) for o in self.options)}")
+        if self.visualization == VIS_DATE and t.count("-") == 2 and not t.startswith("-"):
+            return date_value(t)
         low = t.lower()
-        if self._switch and low in ("on", "off", "true", "false", "yes", "no"):
+        if self.is_switch and low in ("on", "off", "true", "false", "yes", "no"):
             return 1.0 if low in ("on", "true", "yes") else 0.0
         try:
             value = float(t)
@@ -183,10 +228,21 @@ class Value:
         return value
 
     @property
-    def _switch(self) -> bool:
+    def is_switch(self) -> bool:
         """Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1."""
         return self.visualization == VIS_ALARM or (self.visualization in (VIS_ACTION, VIS_FLAG)
                                                    and self.minimum == 0 and self.maximum == 1)
+
+    @property
+    def is_writer_register(self) -> bool:
+        """Tell whether the value is the register after a switch that takes the writer's address.
+
+        Such a register has no name, is writeable, has no minimum, and has 65535 as its maximum, its step and
+        its default; an EasyView lists one after each of its eventable switches.
+        """
+        no_minimum = self.minimum is None or self.minimum != self.minimum
+        return (not self.name and self.writeable and no_minimum
+                and self.maximum == self.step == self.default == NO_DEFAULT)
 
     @property
     def writer(self) -> str:
@@ -311,12 +367,18 @@ class Value:
         """Return *value* as text for this value.
 
         That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-        'n/a' for NaN, else the number with the step's precision.
+        'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+        value shows its date (see date_text()), and a time value of whole seconds, 0 aside, the seconds as a
+        duration (see duration_text()).
         """
         if value is None:
             return "-"
         if value != value:  # NaN: the device has no value yet
             return "n/a"
+        if self.visualization == VIS_DATE and (date := date_text(value)):
+            return f"{int(value)} ({date})"
+        if self.visualization == VIS_TIME and 0 < value < 1e9 and value == int(value):
+            return f"{int(value)} ({duration_text(value)})"
         if self.visualization in LISTED and 0 <= value < len(self.options) and value == int(value):
             return self.options[int(value)]
         if self.step and 0 < self.step < 1:
@@ -456,6 +518,33 @@ class PageReader:
         echoed = struct.unpack_from("<f", reply.data, 2)[0]
         logger.debug(f"{self.address} {page.name} #{index} -> device echoes {echoed!r}")
         return echoed
+
+    def name_writer(self, page: Page, index: int) -> bool | None:
+        """Name this computer as the writer of the value at *index* of *page*, and return how the device took it.
+
+        The frame goes to the index after *index* and carries the bus's host address, as a master names itself
+        after writing a switch; a device may act on the switch only once it has come. Return True if the device
+        echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
+        *page* has no read kind.
+
+        Send it only where the index after *index* is no value of the page, which would be overwritten, or is
+        the register for the writer's address (see Value.is_writer_register).
+        """
+        kind = page.read
+        if kind is None:
+            raise ValueError(f"{page.name} values cannot be written")
+        host = self.bus.host
+        data = (index + 1).to_bytes(2, "little") + bytes([host.hi]) + host.lo.to_bytes(3, "little")
+        logger.info(f"{self.address} {page.name} #{index}: naming {host} as the writer, at #{index + 1}")
+        try:
+            reply = self.bus.exchange(Frame(kind, self.address, data),
+                                      lambda f: f.address == self.address and f.data[:2] == data[:2]
+                                      and f.kind in (kind - 0x20, kind - 0x10),
+                                      timeout=self.reply_timeout, retries=0)
+        except TimeoutError:
+            logger.debug(f"{self.address} {page.name} #{index + 1}: no answer to the writer's address")
+            return None
+        return reply.kind == kind - 0x20
 
     def read_text(self, page: Page, index: int) -> tuple[int | None, str]:
         """Return (string id, text) for the text value at *index* of *page*.
@@ -615,7 +704,6 @@ class PageReader:
         The list is empty where the device lists none. Raise TimeoutError if the device does not answer.
         """
         kind = page.info
-        assert kind is not None
         index = value.index
         maximum = value.maximum if value.visualization == VIS_LIST else self.attr_float(kind, Attribute.MAXIMUM, index)
         counted = maximum is not None and 0 < maximum < 256 and maximum == int(maximum)
@@ -709,11 +797,16 @@ class PageReader:
         phantoms is cut at the first two junk values in a row. A version number the device does not answer
         for is kept as None.
 
-        Raise TimeoutError if the device does not answer, NotAvailable (a TimeoutError) or ValueError if it
-        gives no number of values or groups.
+        A page the device answers 'not available' for the number of values or groups of, as an EasyView does
+        for its alarm page, is returned empty. Raise TimeoutError if the device does not answer, ValueError if
+        it gives no number of values or groups.
         """
-        n_values = self.bus.read_number(self.address, page.count_values)
-        n_groups = self.bus.read_number(self.address, page.count_groups)
+        try:
+            n_values = self.bus.read_number(self.address, page.count_values)
+            n_groups = self.bus.read_number(self.address, page.count_groups)
+        except NotAvailable:
+            logger.info(f"{self.address} {page.name}: the device has no such page")
+            return PageTable(page)
         logger.debug(f"{self.address} {page.name}: reading {n_values} values and {n_groups} groups "
                      f"(kinds info {page.info:#04x} group {page.group:#04x} read {page.read})")
         try:

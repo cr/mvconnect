@@ -205,6 +205,7 @@ class HidLink:
 
     def __init__(self, info: LinkInfo | None = None):
         self.info = info
+        self._found = info is None  # open() found the link itself, and finds it again when opened again
         self._dev: hid.device | None = None
         self._listener: Callable[[Frame], None] | None = None
         self._reader: threading.Thread | None = None
@@ -222,18 +223,20 @@ class HidLink:
         """Open the link, start the reader thread and return the link.
 
         The reader thread hands every frame received to *listener*. Without a LinkInfo, the first link found
-        is opened, with a warning when there are several. Raise LinkError if no link is found or it cannot be
+        is opened, with a warning when there are several, and found again when a closed link is opened again:
+        plugged in again, it may be at another path. Raise LinkError if no link is found or it cannot be
         opened.
         """
-        if self.info is None:
+        if self._found or self.info is None:
             self.info = find_link()
+        info = self.info
         dev = hid.device()
-        logger.debug(f"opening {self.info.path!r} ({self.info.product!r} serial {self.info.serial!r})")
+        logger.debug(f"opening {info.path!r} ({info.product!r} serial {info.serial!r})")
         try:
-            dev.open_path(self.info.path)
+            dev.open_path(info.path)
         except (OSError, ValueError) as e:
-            logger.debug(f"open failed: {e}; {_access(self.info.path)}")  # who may open it: the details, for --debug
-            raise LinkError(f"cannot open the MasterBus USB Link {_name(self.info)}: {e}") from e
+            logger.debug(f"open failed: {e}; {_access(info.path)}")  # who may open it: the details, for --debug
+            raise LinkError(f"cannot open the MasterBus USB Link {_name(info)}: {e}") from e
         dev.set_nonblocking(0)
         self._dev = dev
         try:
@@ -245,10 +248,12 @@ class HidLink:
             logger.debug(f"device strings or report descriptor not readable: {e}")
         self._listener = listener
         self.failure = None
+        with self._credits_changed:  # a link opened again has every slot free, whatever the last one spent
+            self._credits = MAX_RECORDS
         self._stop.clear()
         self._reader = threading.Thread(target=self._read_loop, name="mvconnect-hid-reader", daemon=True)
         self._reader.start()
-        logger.info(f"opened the MasterBus USB Link {_name(self.info)}")
+        logger.info(f"opened the MasterBus USB Link {_name(info)}")
         return self
 
     def close(self) -> None:
@@ -284,7 +289,7 @@ class HidLink:
         if self._dev is None:
             raise LinkError("link is not open")
         if self.failure:  # unplugged, say: no reply could ever come, so say so instead of timing out
-            raise LinkError(f"{self.failure}; open the link again (a server must be restarted)")
+            raise LinkError(f"{self.failure}; the link must be opened again")
         pending = list(frames)
         deadline = time.monotonic() + timeout
         while pending:

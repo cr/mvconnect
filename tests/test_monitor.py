@@ -136,3 +136,20 @@ def test_ctrl_c_stops_the_monitor_and_says_so(tool, monkeypatch, capsys):
     monkeypatch.setattr(Canned, "traffic", interrupted)
     tool.monitor(timeout=0.02)
     assert line_with(capsys.readouterr().err, "WARNING", "Ctrl-C", "monitor stops", 2, "frames")
+
+
+def test_this_computer_s_frames_are_named_by_the_bus_s_own_address(monkeypatch, capsys):
+    import mvconnect.cli as cli
+    host = Address(0x14, 0x30450)  # an address taken from a link's serial number, not the fixed one
+
+    class Hosted(Canned):
+        def traffic(self):
+            yield 100.0, Frame(0x0A, host, b""), True
+
+    @contextmanager
+    def open_system(refresh=False):
+        yield Hosted(MasterBus(FakeShunt(), host=host, reply_timeout=0.02, retries=0).open(), use_cache=False)
+    monkeypatch.setattr(cli, "open_system", open_system)
+    monkeypatch.setattr(cli.sys, "argv", ["mvconnect", "monitor"])
+    cli.Tool().monitor(timeout=0.02)
+    assert line_with(capsys.readouterr().err, "14:30450", "USB Link")

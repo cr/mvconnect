@@ -67,7 +67,9 @@ A System on the open link, served on a Unix socket, one request on the bus at a 
 
 Create one serving *system* at *path* (socket_path() by default), enumerating the bus again every
 *re_enumerate* seconds so that a device plugged in later appears, and listening *timeout* seconds for
-announcements. The devices are identified once, so that a command skips the listen window.
+announcements. The devices are identified once, so that a command skips the listen window. A link that
+fails under the server, unplugged say, is looked for every *reopen* seconds and opened again; a request
+meanwhile is a LinkError that says the link is lost.
 
 <a id="mvconnect.state.StateServer.bind"></a>
 
@@ -129,7 +131,8 @@ def handle(method: str, p: dict) -> Any
 
 Carry out one request, *method* with its parameters *p*, on the system.
 
-Return the result as plain values for JSON. Raise ValueError for an unknown method.
+Return the result as plain values for JSON. Raise LinkError while the link is lost, and ValueError for
+an unknown method.
 
 <a id="mvconnect.state.start_in_thread"></a>
 
@@ -158,10 +161,10 @@ class StateSystem(System)
 A System whose bus conversations go to the server's state; everything else runs here.
 
 Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
-methods that talk to the bus (devices, traffic, login_level, login, tables, read_values, read_options,
-read_text, write_value, write_text) send a request to the server instead and return what it
-answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
-there. listen() is not served: the server's traffic comes through traffic().
+methods that talk to the bus (devices, traffic, host, login_level, login, tables, read_values,
+read_options, read_text, write_value, write_text, name_writer) send a request to the server instead and
+return what it answers. They take no *progress* to report: the server reads a page in one request, whose
+progress stays there. listen() is not served: the server's traffic comes through traffic().
 
 <a id="mvconnect.state.StateSystem.listen"></a>
 
@@ -315,6 +318,27 @@ def write_text(device: Device, table: PageTable, index: int, text: str) -> str
 ```
 
 Ask the server; see System.write_text().
+
+<a id="mvconnect.state.StateSystem.host"></a>
+
+#### host
+
+```python
+@property
+def host() -> Address
+```
+
+Ask the server; see System.host.
+
+<a id="mvconnect.state.StateSystem.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(device: Device, table: PageTable, index: int) -> bool | None
+```
+
+Ask the server; see System.name_writer().
 
 <a id="mvconnect.state.connect"></a>
 

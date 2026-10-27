@@ -9,8 +9,8 @@ from expect import has, line_with, logged, mentions
 from mvconnect import cache
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
 from mvconnect.masterbus import MasterBus
-from mvconnect.pages import PAGE_BY_NAME, PAGES, PageReader, Value, table_from_dict, table_to_dict
-from mvconnect.system import AddressError, Refused, System
+from mvconnect.pages import PAGE_BY_NAME, PAGES, VIS_FLAG, PageReader, Value, table_from_dict, table_to_dict
+from mvconnect.system import READ_BACKS, AddressError, Refused, System
 
 SHUNT = Address(0x1B, 0x0CAD9)
 ELSEWHERE = Address(0x0A, 0x1062B)  # a charger the fake bus does not have
@@ -52,6 +52,7 @@ VALUES = {0x30: {0: 98.9, 1: 13.4}, 0x37: {0: 12.0, 1: 510.0, 2: 3.0, 5: 0.0, 6:
 COUNTS = {0x01: 2, 0x02: 1, 0x03: 0, 0x04: 0, 0x05: 8, 0x06: 2, 0x07: 0, 0x08: 0, 0x0B: 0x0201,
           0x1C: 5, 0x1D: 1, 0x1E: 7, 0x1F: 1, 0x60: 14,  # page version numbers and the status version
           0x19: 0}  # the login level
+NO_COUNT: set[int] = set()  # count kinds the fake answers 'not available' for, as an EasyView does for its alarm page
 JUNK_FROM = [None]  # when set: the fake answers attributes of config values from this index on with zeros
 ADDRESS_FRAMES = []  # the 0x14 frames the fake device received
 GROUP_LENGTHS = {(0x39, 1): 2}  # config group 1 says it has 2 members, though it answers 4
@@ -103,7 +104,9 @@ class FakeShunt:
                 elif d[1] in COUNTS:
                     self.reply(KIND_NA, d)
             elif k == KIND_REQUEST and d[0] == 0x08:
-                if d[1] in COUNTS:
+                if d[1] in NO_COUNT:
+                    self.reply(KIND_NA, d)
+                elif d[1] in COUNTS:
                     self.reply(KIND_REPLY, d[:2] + COUNTS[d[1]].to_bytes(2, "little"))
             elif k in VALUES and len(d) == 2:
                 i = d[0] | d[1] << 8
@@ -451,14 +454,14 @@ def answering(bus, change, to=lambda f: f.kind == 0x37 and len(f.data) == 6 and 
 
 
 def test_a_reset_presses_no_button_and_writes_no_marker(config, bus):
-    from mvconnect.pages import VIS_ACTION, VIS_COUNTER, VIS_LIST
+    from mvconnect.pages import VIS_ACTION, VIS_LIST, VIS_TIME
     system, device, table = config
     nominal = table.values[0]
     button = dataclasses.replace(nominal, visualization=VIS_ACTION, minimum=0.0, maximum=1.0, default=1.0)
     with pytest.raises(ValueError):
         system.write_default(device, table, button, force=True)
     with pytest.raises(Refused):
-        system.write_default(device, table, dataclasses.replace(nominal, visualization=VIS_COUNTER, default=12.0))
+        system.write_default(device, table, dataclasses.replace(nominal, visualization=VIS_TIME, default=12.0))
     assert dataclasses.replace(nominal, minimum=None, maximum=None, default=65535.0).default_value is None
     listed = dataclasses.replace(nominal, visualization=VIS_LIST, options=["A", "B", "C"], minimum=0.0, maximum=8.0)
     assert dataclasses.replace(listed, default=4.0).default_value is None
@@ -492,6 +495,38 @@ def test_a_write_the_device_stores_otherwise_is_warned_of(config, bus):
     answering(bus, clamped)
     written = system.write(device, table, table.values[0], "24")
     assert written.after == "36" and written.warnings
+    reads = [f for f in bus.link.sent if f.kind == 0x37 and f.data == bytes([0, 0])]
+    assert len(reads) == 1 + READ_BACKS  # once before the write, then read back until given up
+
+
+def test_a_slow_switch_is_read_back_until_it_shows(switch, bus, monkeypatch):
+    """A relay takes its time: the write is echoed, and the value shows the switch only a few reads later."""
+    from mvconnect import system as sys_
+    monkeypatch.setattr(sys_, "READ_BACK_PAUSE", 0.01)
+    pauses = []
+    monkeypatch.setattr(sys_.time, "sleep", pauses.append)  # Windows' clock is too coarse to time them
+    system, device, table, button = switch
+    reads = [0]
+    asked = []  # the last request for value 7 picked: a read (2 bytes) or a write (6)
+
+    def picked(f):
+        if f.kind == 0x37 and f.data[:2] == bytes([7, 0]) and f.data[2:3] != b"\x14":
+            asked.append(f.data)
+            return True
+        return False
+
+    def slowly(kind, data):
+        if len(asked[-1]) == 6:  # the echo of the write: the relay has not moved yet
+            VALUES[0x37][7] = 0.0
+            return kind, data
+        reads[0] += 1
+        if reads[0] >= 3:
+            VALUES[0x37][7] = 1.0
+        return kind, data[:2] + struct.pack("<f", VALUES[0x37][7])
+    answering(bus, slowly, to=picked)
+    written = system.write(device, table, button, "on", timeout=0.02)
+    assert written.took and not written.warnings and VALUES[0x37][7] == 1.0
+    assert reads[0] == 3 and pauses == [0.01]  # read once before, then twice back, a pause between
 
 
 def test_a_device_value_is_written_as_its_entry_alone(config, bus):
@@ -1103,3 +1138,165 @@ def test_a_list_value_given_a_number_writes_nothing(config, bus):
         assert system.write(device, table, battery_type, "3", force=True).after == "Li-ion"
     finally:
         VALUES[0x37][2] = 3.0
+
+
+def test_date_values_show_and_take_a_date():
+    from mvconnect.pages import VIS_DATE, date_text, date_value
+    date = Value(0, visualization=VIS_DATE)
+    assert date_text(843000.0) == "2026-05-24" and date_value("2026-05-24") == 843000.0
+    assert date.format(843000.0) == "843000 (2026-05-24)"
+    assert date.parse("2026-05-24") == 843000.0 and date.parse("843000") == 843000.0
+    for no_date in (0.0, 5.0, 843000.5, float("inf"), 2026 * 416 + 13 * 32 + 1, 2026 * 416 + 0 * 32 + 1):
+        assert date_text(no_date) is None
+    assert date.format(5.0) == "5" and date.format(float("nan")) == "n/a"
+    for bad in ("2026-13-01", "2026-05", "x-y-z", "2026-05-00", "2026-02-31", "2026-05-24-1"):
+        with pytest.raises(ValueError):
+            date_value(bad)
+    assert Value(0).format(843000.0) == "843000"  # a number is just a number
+
+
+def test_time_values_show_their_seconds_as_a_duration():
+    from mvconnect.pages import VIS_TIME, duration_text
+    time = Value(0, visualization=VIS_TIME)
+    assert duration_text(54496) == "15:08:16" and duration_text(90061) == "1d 1:01:01"
+    assert time.format(54496.0) == "54496 (15:08:16)" and time.format(6.0) == "6 (0:00:06)"
+    assert time.format(0.0) == "0" and time.format(61.5) == "61.5"  # nothing to tell, or no whole seconds
+    assert Value(0).format(54496.0) == "54496"
+
+
+@pytest.fixture
+def switch(config):
+    """The system, the shunt, its config page and value 7 made a button of range 0..1, whose next index is no
+    value of the page; the fake's value 7 is restored afterwards."""
+    from mvconnect.pages import VIS_ACTION
+    system, device, table = config
+    kept = VALUES[0x37][7]
+    ADDRESS_FRAMES.clear()
+    button = dataclasses.replace(table.values[7], visualization=VIS_ACTION, minimum=0.0, maximum=1.0)
+    yield system, device, table, button
+    VALUES[0x37][7] = kept
+
+
+def test_a_switch_write_names_the_writer_at_the_next_index(switch, bus):
+    system, device, table, button = switch
+    writer = bytes([8, 0, 0x14, 0x34, 0x12, 0x00])  # the host address 14:01234, low field LE
+    written = system.write(device, table, button, "on", timeout=0.02)
+    assert written.took and VALUES[0x37][7] == 1.0 and not written.warnings and ADDRESS_FRAMES == [writer]
+    written = system.write(device, table, button, "off", force=True, timeout=0.02)  # forced or not
+    assert written.took and VALUES[0x37][7] == 0.0 and not written.warnings and ADDRESS_FRAMES == [writer, writer]
+    sent = [f.data for f in bus.link.sent if f.kind == 0x37 and len(f.data) == 6]
+    assert sent[-2][:2] == bytes([7, 0]) and sent[-1] == writer  # the value first, then the writer
+    nominal = table.values[0]  # a number: no switch, no frame
+    system.write(device, table, nominal, "24", timeout=0.02)
+    assert ADDRESS_FRAMES == [writer, writer]
+
+
+def test_no_writer_is_named_where_the_next_index_is_a_value(config, bus):
+    from mvconnect.pages import VIS_ACTION, VIS_NUMBER
+    system, device, table = config
+    kept = dict(VALUES[0x37])
+    ADDRESS_FRAMES.clear()
+    try:
+        at_5 = dataclasses.replace(table.values[5], visualization=VIS_ACTION, minimum=0.0, maximum=1.0)  # 6 is a value
+        system.write(device, table, at_5, "on", force=True, timeout=0.02)
+        number = dataclasses.replace(table.values[7], visualization=VIS_NUMBER, minimum=0.0, maximum=1.0)  # no switch
+        system.write(device, table, number, "1", force=True, timeout=0.02)
+        wide = dataclasses.replace(table.values[7], visualization=VIS_ACTION, minimum=0.0, maximum=2.0)  # three states
+        system.write(device, table, wide, "1", force=True, timeout=0.02)
+    finally:
+        VALUES[0x37].clear(), VALUES[0x37].update(kept)
+    assert not ADDRESS_FRAMES
+
+
+def test_a_writer_frame_refused_or_unanswered_is_warned_of(switch, bus):
+    system, device, table, button = switch
+    naming = lambda f: f.kind == 0x37 and len(f.data) == 6 and f.data[2] == 0x14  # noqa: E731
+    undo = answering(bus, lambda kind, data: (kind + 0x10, data), to=naming)  # 'not available' instead of the echo
+    try:
+        written = system.write(device, table, button, "on", force=True, timeout=0.02)
+    finally:
+        undo()
+    assert written.took and [w for w in written.warnings if has(w, "writer", "refused")]
+    undo = answering(bus, lambda kind, data: None, to=naming)  # silence
+    try:
+        written = system.write(device, table, button, "off", force=True, timeout=0.02)
+    finally:
+        undo()
+    assert written.took and [w for w in written.warnings if has(w, "writer")]
+    assert not any(has(w, "refused") for w in written.warnings)
+
+
+def test_name_writer_needs_a_page_with_a_read_kind(bus):
+    r = PageReader(bus, SHUNT, reply_timeout=0.02, retries=0)
+    ADDRESS_FRAMES.clear()
+    assert r.name_writer(PAGE_BY_NAME["config"], 7) is True
+    assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+    with pytest.raises(ValueError):
+        r.name_writer(PAGE_BY_NAME["alarm"], 0)
+
+
+def test_the_writer_is_named_into_a_listed_register_but_not_over_a_value(switch, bus):
+    system, device, table, button = switch
+    register = Value(8, name="", writeable=True, minimum=float("nan"), maximum=65535.0, step=65535.0, default=65535.0)
+    assert register.is_writer_register
+    for other in (dataclasses.replace(register, name="Timer"), dataclasses.replace(register, writeable=False),
+                  dataclasses.replace(register, maximum=1.0), dataclasses.replace(register, default=0.0),
+                  dataclasses.replace(register, minimum=0.0), dataclasses.replace(register, step=1.0)):
+        assert not other.is_writer_register
+    values = dict(table.values)
+    try:
+        table.values[8] = register
+        system.write(device, table, button, "off", force=True, timeout=0.02)
+        assert ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+        ADDRESS_FRAMES.clear()
+        table.values[8] = dataclasses.replace(register, name="Timer")
+        system.write(device, table, button, "off", force=True, timeout=0.02)
+        assert not ADDRESS_FRAMES
+    finally:
+        table.values.clear(), table.values.update(values)
+
+
+def test_a_page_the_device_has_not_got_is_empty(bus, tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    NO_COUNT.add(0x07)  # the alarm page's values: 'not available', as an EasyView answers
+    try:
+        r = PageReader(bus, SHUNT, reply_timeout=0.02, retries=0)
+        table = r.read_page(PAGE_BY_NAME["alarm"])
+        assert table.values == {} and table.groups == [] and table.version is None
+        system = System(bus)
+        device = system.device("msh", timeout=0.02)
+        tables = system.tables(device, list(PAGES))
+        assert sorted(tables) == ["alarm", "config", "history", "monitor"] and tables["alarm"].values == {}
+    finally:
+        NO_COUNT.discard(0x07)
+
+
+
+def test_a_switch_reset_names_the_writer_as_its_write_does(switch, bus):
+    system, device, table, button = switch
+    flag = dataclasses.replace(button, visualization=VIS_FLAG, default=0.0)
+    VALUES[0x37][7] = 1.0
+    written = system.write_default(device, table, flag)
+    assert written.took and VALUES[0x37][7] == 0.0 and ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+
+
+def test_a_read_back_the_device_does_not_answer_is_tried_once(config, bus, caplog):
+    import logging
+    system, device, table = config
+    asked = []  # the requests for value 0: a read (2 bytes) or the write (6)
+
+    def picked(f):
+        if f.kind == 0x37 and f.data[:2] == bytes([0, 0]):
+            asked.append(f.data)
+            return True
+        return False
+
+    def silent_after_the_write(kind, data):
+        wrote = any(len(a) == 6 for a in asked)
+        return (kind, data) if len(asked[-1]) == 6 or not wrote else None  # read before, write, then silence
+    answering(bus, silent_after_the_write, to=picked)
+    with caplog.at_level(logging.WARNING, logger="mvconnect.system"):
+        written = system.write(device, table, table.values[0], "24")
+    reads = [f for f in bus.link.sent if f.kind == 0x37 and f.data == bytes([0, 0])]
+    assert not written.took and len(reads) == 1 + 3  # once before; back once, with its two re-sends
+    assert len([r for r in caplog.records if has(r.getMessage(), "no answer")]) == 1

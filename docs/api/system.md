@@ -28,6 +28,18 @@ listing keeps the grouping.
 
 frames held for a reader of the traffic that lags; more are dropped
 
+<a id="mvconnect.system.READ_BACKS"></a>
+
+#### READ\_BACKS
+
+reads of a written value until it shows what was written: a relay takes its time
+
+<a id="mvconnect.system.READ_BACK_PAUSE"></a>
+
+#### READ\_BACK\_PAUSE
+
+seconds between two of them
+
 <a id="mvconnect.system.AddressError"></a>
 
 ## AddressError
@@ -371,6 +383,29 @@ Write *value* at *index* of *table*'s page and return what the device echoes.
 
 See PageReader.write_value().
 
+<a id="mvconnect.system.System.host"></a>
+
+#### host
+
+```python
+@property
+def host() -> Address
+```
+
+Return this computer's address on the bus.
+
+<a id="mvconnect.system.System.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(device: Device, table: PageTable, index: int) -> bool | None
+```
+
+Name this computer as the writer of the value at *index* of *table*'s page.
+
+See PageReader.name_writer().
+
 <a id="mvconnect.system.System.write_text"></a>
 
 #### write\_text
@@ -413,6 +448,10 @@ write did not take). The device checks again and may refuse (ValueError); a devi
 acknowledge is read back anyway, with a warning. A text value whose text cannot be read raises
 TimeoutError: before the write, before anything is sent, or after a write it does not acknowledge.
 
+A write to a switch (an alarm value, or an action or flag value of range 0..1) is followed by the frame
+that names this computer as the writer (see name_writer()), unless the index after the switch is a
+value of the page other than the register for the writer's address (see Value.is_writer_register).
+
 <a id="mvconnect.system.System.write_default"></a>
 
 #### write\_default
@@ -428,8 +467,8 @@ Reset *value* of *table*'s page on *device* to the default the device gives.
 
 Write the default, read it back and return a Written. Raise ValueError where there is no default to
 return to (none given, or a text, device or command value) and for an action value, whose default would
-carry the action out; raise Refused where the device marks the value read-only, or for a counter or a
-date, which *force* skips.
+carry the action out; raise Refused where the device marks the value read-only, or for a time or a date,
+which *force* skips. A switch's reset names the writer as its write does (see write()).
 
 <a id="mvconnect.system.System.find_values"></a>
 

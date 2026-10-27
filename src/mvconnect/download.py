@@ -242,9 +242,7 @@ def _unpack(bundle: Path, directory: Path, password: str | None) -> list[Path]:
             dest.parent.mkdir(parents=True, exist_ok=True)
             try:
                 data = zf.read(info, pwd=pwd)
-            except RuntimeError as e:
-                raise DownloadError(f"{bundle.name}: cannot extract {info.filename}: {e}") from e
-            except (zipfile.BadZipFile, zlib.error, EOFError) as e:  # a damaged member, or a wrong password
+            except (RuntimeError, zipfile.BadZipFile, zlib.error, EOFError) as e:  # a wrong password, or damage
                 raise DownloadError(f"{bundle.name}: cannot extract {info.filename}: {e}") from e
             except NotImplementedError as e:
                 raise DownloadError(f"{bundle.name}: {info.filename} uses an unsupported compression or "

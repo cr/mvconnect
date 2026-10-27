@@ -38,9 +38,9 @@ from mvconnect.pages import (
     PAGE_BY_NAME,
     PAGES,
     VIS_ACTION,
-    VIS_COUNTER,
     VIS_DATE,
     VIS_DEVICE,
+    VIS_TIME,
     Page,
     PageReader,
     PageTable,
@@ -51,6 +51,8 @@ from mvconnect.words import fold, select
 logger = logging.getLogger(__name__)
 
 TRAFFIC_BACKLOG = 10_000  # frames held for a reader of the traffic that lags; more are dropped
+READ_BACKS = 5  # reads of a written value until it shows what was written: a relay takes its time
+READ_BACK_PAUSE = 0.2  # seconds between two of them
 
 
 class AddressError(Exception):
@@ -422,6 +424,18 @@ class System:
         """
         return PageReader(self.bus, device.address).write_value(table.page, index, value)
 
+    @property
+    def host(self) -> Address:
+        """Return this computer's address on the bus."""
+        return self.bus.host
+
+    def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
+        """Name this computer as the writer of the value at *index* of *table*'s page.
+
+        See PageReader.name_writer().
+        """
+        return PageReader(self.bus, device.address).name_writer(table.page, index)
+
     def write_text(self, device: Device, table: PageTable, index: int, text: str) -> str:
         """Write *text* as the string the text value at *index* of *table*'s page names.
 
@@ -449,6 +463,10 @@ class System:
         write did not take). The device checks again and may refuse (ValueError); a device that does not
         acknowledge is read back anyway, with a warning. A text value whose text cannot be read raises
         TimeoutError: before the write, before anything is sent, or after a write it does not acknowledge.
+
+        A write to a switch (an alarm value, or an action or flag value of range 0..1) is followed by the frame
+        that names this computer as the writer (see name_writer()), unless the index after the switch is a
+        value of the page other than the register for the writer's address (see Value.is_writer_register).
         """
         label = self._label(device, table, value)
         if not value.writeable and not force:
@@ -480,15 +498,15 @@ class System:
                     wanted = math.nan
                 if not sendable(wanted):
                     raise ValueError(f"{label}: {text!r} is no number the bus can carry") from None
-        return self._send(device, table, value, wanted)
+        return self._send(device, table, value, wanted, name_writer=self._names_writer(table, value))
 
     def write_default(self, device: Device, table: PageTable, value: Value, force: bool = False) -> Written:
         """Reset *value* of *table*'s page on *device* to the default the device gives.
 
         Write the default, read it back and return a Written. Raise ValueError where there is no default to
         return to (none given, or a text, device or command value) and for an action value, whose default would
-        carry the action out; raise Refused where the device marks the value read-only, or for a counter or a
-        date, which *force* skips.
+        carry the action out; raise Refused where the device marks the value read-only, or for a time or a date,
+        which *force* skips. A switch's reset names the writer as its write does (see write()).
         """
         label = self._label(device, table, value)
         default = value.default_value
@@ -496,11 +514,11 @@ class System:
             raise ValueError(f"{label}: no default to reset to")
         if value.visualization == VIS_ACTION:
             raise ValueError(f"{label}: an action has no state to reset; writing its default would carry it out")
-        if value.visualization in (VIS_COUNTER, VIS_DATE) and not force:
+        if value.visualization in (VIS_TIME, VIS_DATE) and not force:
             raise Refused(f"{label}: a {value.type_name} is not reset to a default")
         if not value.writeable and not force:
             raise Refused(f"{label}: the device marks this value read-only")
-        return self._send(device, table, value, default)
+        return self._send(device, table, value, default, name_writer=self._names_writer(table, value))
 
     @staticmethod
     def _label(device: Device, table: PageTable, value: Value) -> str:
@@ -533,11 +551,25 @@ class System:
                                f"{', '.join(value.options) or 'none at all'}")
         return float(choice)
 
-    def _send(self, device: Device, table: PageTable, value: Value, wanted: float | str) -> Written:
+    @staticmethod
+    def _names_writer(table: PageTable, value: Value) -> bool:
+        """Tell whether a write to *value* of *table*'s page is followed by the frame naming the writer.
+
+        That is a write to a switch whose next index is no value of the page, or is the register for the
+        writer's address.
+        """
+        after = table.values.get(value.index + 1)
+        return value.is_switch and (after is None or after.is_writer_register)
+
+    def _send(self, device: Device, table: PageTable, value: Value, wanted: float | str,
+              name_writer: bool = False) -> Written:
         """Make the write itself, after the checks, and the read-back; return a Written.
 
         *wanted* is the number or text to write. A write the device does not acknowledge is read back anyway,
-        with a warning. A text value whose text cannot be read raises TimeoutError.
+        with a warning. A number is read back until it shows (see _read_back()). A text value whose text cannot
+        be read raises TimeoutError. With *name_writer*, the
+        frame naming this computer as the writer follows the write, acknowledged or not, and a device that
+        refuses it or does not answer it is warned of.
         """
         label = self._label(device, table, value)
         warnings: list[str] = []
@@ -562,12 +594,43 @@ class System:
         except TimeoutError:
             warnings.append(f"{label}: the device did not acknowledge the write; reading it back")
             echoed = None
-        after = self.read_values(device, table, [value.index])[value.index]
-        took = after is not None and abs(after - wanted) <= (value.step or 1e-6) / 2
+        if name_writer:
+            named = self.name_writer(device, table, value.index)
+            if named is None:
+                warnings.append(f"{label}: the device did not answer the frame naming this computer as the writer")
+            elif not named:
+                warnings.append(f"{label}: the device refused the frame naming this computer as the writer")
+        after = self._read_back(device, table, value, wanted)
+        took = self._holds(value, after, wanted)
         if not took:
             warnings.append(f"{label}: wanted {value.format(wanted)}, device echoed {value.format(echoed)}, "
                             f"reads back {value.format(after)}")
         return Written(value, value.format(before), value.format(after), value.format(wanted), warnings, took)
+
+    def _read_back(self, device: Device, table: PageTable, value: Value, wanted: float) -> float | None:
+        """Read *value* of *table*'s page on *device* back after a write and return what it holds.
+
+        Return *wanted* as soon as a read shows it, reading up to READ_BACKS times, READ_BACK_PAUSE seconds
+        apart, since a relay takes its time to switch; otherwise what the last read holds. A read the device
+        does not answer ends it: a relay that is still switching shows its old state, not silence.
+        """
+        for n in range(READ_BACKS):
+            if n:
+                time.sleep(READ_BACK_PAUSE)
+            after = self.read_values(device, table, [value.index])[value.index]
+            if after is None:
+                break
+            if self._holds(value, after, wanted):
+                if n:
+                    logger.debug(f"{self._label(device, table, value)}: shows {value.format(after)} after "
+                                 f"{n + 1} reads")
+                break
+        return after
+
+    @staticmethod
+    def _holds(value: Value, after: float | None, wanted: float) -> bool:
+        """Tell whether *after*, as *value* read back, is *wanted*: within half a step of it."""
+        return after is not None and abs(after - wanted) <= (value.step or 1e-6) / 2
 
     def _send_device(self, device: Device, table: PageTable, value: Value, wanted: float) -> Written:
         """Write entry *wanted* of the device value *value* and read back which device it holds now.

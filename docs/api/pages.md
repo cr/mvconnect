@@ -191,11 +191,11 @@ option texts via attribute 0x26
 
 a text such as "Device name"; the range is its length. MasterAdjust shows it, offers no edit
 
-<a id="mvconnect.pages.VIS_COUNTER"></a>
+<a id="mvconnect.pages.VIS_TIME"></a>
 
-#### VIS\_COUNTER
+#### VIS\_TIME
 
-history counters, read-only
+seconds: a time of day, or how long something lasted; read-only
 
 <a id="mvconnect.pages.VIS_DATE"></a>
 
@@ -250,6 +250,47 @@ the high field of a master's address (MasterAdjust, an EasyView): data[2] of tha
 <a id="mvconnect.pages.VIS_LETTERS"></a>
 
 #### VIS\_LETTERS
+
+<a id="mvconnect.pages.DATE_YEAR"></a>
+
+#### DATE\_YEAR
+
+a date value is year * 416 + month * 32 + day, 416 being 13 * 32
+
+<a id="mvconnect.pages.date_text"></a>
+
+#### date\_text
+
+```python
+def date_text(value: float) -> str | None
+```
+
+Return the date *value* holds as 'YYYY-MM-DD', or None if it holds no date.
+
+A date value is year * 416 + month * 32 + day; a value that is not a whole number or whose month or day
+is out of range holds no date.
+
+<a id="mvconnect.pages.date_value"></a>
+
+#### date\_value
+
+```python
+def date_value(text: str) -> float
+```
+
+Return the number a date value holds for *text*, a date written 'YYYY-MM-DD'.
+
+Raise ValueError if *text* is not a date of that form, or no day of the calendar.
+
+<a id="mvconnect.pages.duration_text"></a>
+
+#### duration\_text
+
+```python
+def duration_text(seconds: float) -> str
+```
+
+Return *seconds*, a whole number of them, as 'H:MM:SS', with the days in front as 'Nd ' past a day.
 
 <a id="mvconnect.pages.Value"></a>
 
@@ -339,12 +380,37 @@ Return the number *text* means for this value.
 
 A value with options takes only their names, compared without regard to case, and gives the option's
 index: a number, an index among them, is no name. A switch, an alarm value or an action or flag value
-of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. Any other value takes a
-number. A number past a bound by less than a millionth of it gives the bound, since the bounds arrive
-as float32.
+of range 0..1, takes on and off (or true and false, yes and no) as 1 and 0. A date value takes a date
+written 'YYYY-MM-DD' as well as a number (see date_value()). Any other value takes a number. A number
+past a bound by less than a millionth of it gives the bound, since the bounds arrive as float32.
 
 Raise ValueError, which names the options where there are any, if *text* is none of those, is a number
 the bus cannot carry (see sendable()) or lies outside the range.
+
+<a id="mvconnect.pages.Value.is_switch"></a>
+
+#### is\_switch
+
+```python
+@property
+def is_switch() -> bool
+```
+
+Tell whether the value is on or off: an alarm value, or an action or flag value of range 0..1.
+
+<a id="mvconnect.pages.Value.is_writer_register"></a>
+
+#### is\_writer\_register
+
+```python
+@property
+def is_writer_register() -> bool
+```
+
+Tell whether the value is the register after a switch that takes the writer's address.
+
+Such a register has no name, is writeable, has no minimum, and has 65535 as its maximum, its step and
+its default; an EasyView lists one after each of its eventable switches.
 
 <a id="mvconnect.pages.Value.writer"></a>
 
@@ -446,7 +512,9 @@ def format(value: float | None) -> str
 Return *value* as text for this value.
 
 That is the entry's name for a list, device or command value whose entries are known, '-' for None,
-'n/a' for NaN, else the number with the step's precision.
+'n/a' for NaN, else the number with the step's precision. Behind the number, in parentheses, a date
+value shows its date (see date_text()), and a time value of whole seconds, 0 aside, the seconds as a
+duration (see duration_text()).
 
 <a id="mvconnect.pages.Group"></a>
 
@@ -584,6 +652,24 @@ button such as 'Complete' would be pressed again. The caller reads the value bac
 The reply to a write has the kind and index of the reply to a read, so another master polling the
 value answers alike. A refusal or an echo of exactly the value sent decides; a reply with another value,
 the device's own when it stores the value rounded, counts only when neither comes in time.
+
+<a id="mvconnect.pages.PageReader.name_writer"></a>
+
+#### name\_writer
+
+```python
+def name_writer(page: Page, index: int) -> bool | None
+```
+
+Name this computer as the writer of the value at *index* of *page*, and return how the device took it.
+
+The frame goes to the index after *index* and carries the bus's host address, as a master names itself
+after writing a switch; a device may act on the switch only once it has come. Return True if the device
+echoes the frame, False if it answers 'not available', None if it does not answer. Raise ValueError if
+*page* has no read kind.
+
+Send it only where the index after *index* is no value of the page, which would be overwritten, or is
+the register for the writer's address (see Value.is_writer_register).
 
 <a id="mvconnect.pages.PageReader.read_text"></a>
 
@@ -768,8 +854,9 @@ read so far and the total. Firmware that counts more values than it has and answ
 phantoms is cut at the first two junk values in a row. A version number the device does not answer
 for is kept as None.
 
-Raise TimeoutError if the device does not answer, NotAvailable (a TimeoutError) or ValueError if it
-gives no number of values or groups.
+A page the device answers 'not available' for the number of values or groups of, as an EasyView does
+for its alarm page, is returned empty. Raise TimeoutError if the device does not answer, ValueError if
+it gives no number of values or groups.
 
 <a id="mvconnect.pages.table_to_dict"></a>
 

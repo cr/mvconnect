@@ -36,7 +36,6 @@ from mvconnect.frame import Address
 from mvconnect.hidlink import LinkError, describe_link, find_link
 from mvconnect.masterbus import (
     ENDING,
-    HOST_ADDRESS,
     LOGIN_LEVELS,
     Ended,
     Progress,
@@ -257,7 +256,7 @@ def _value(index: int, name: str, width: int = 0) -> str:
 
 # The attribute column, coloured as eza colours a file's mode: the kind in the first place,
 # then one colour per permission-like flag, and dim dashes where a flag is off.
-_TYPE_STYLES = {"n": "", "f": "yellow", "l": "blue", "a": "red", "b": "magenta", "t": "cyan", "c": "dim",
+_TYPE_STYLES = {"n": "", "f": "yellow", "l": "blue", "a": "red", "b": "magenta", "t": "cyan", "T": "dim",
                 "d": "cyan", "D": "bold green", "C": "green", "?": "dim"}
 _FLAG_STYLES = {"w": "bold red", "e": "green", "g": "yellow"}
 
@@ -342,18 +341,22 @@ class Tool:
         number, an option name for a list or command value, or on/off; a
         device value ("Event 1 target") takes a device among its entries by
         its name, type or address, or none; a text value ("Device name")
-        takes the text, up to the length shown. --reset writes the default
-        the device gives; never to a button, which it would press, nor to
-        a counter or date unless forced. Either is checked against the value's range and
-        the device's writeable flag before anything is sent (--force skips
-        both); the device checks again and may refuse. When the words
+        takes the text, up to the length shown; a date value a date as
+        YYYY-MM-DD. --reset writes the default the device gives; never to
+        a button, which it would press, nor to a time or date unless
+        forced. Either is checked against the value's range and the
+        device's writeable flag before anything is sent (--force skips
+        both); the device checks again and may refuse. A write to a switch
+        (an alarm, or a button or flag of range 0..1) is followed by the
+        frame that names this computer as the writer, as MasterAdjust sends
+        it, unless the next index holds another value. When the words
         select several values, they are listed and nothing is written; an
         index alone is one value per page, so a write by index names the
         page or a word of the value's name.
 
         A listing has an attribute column like ls -l's mode: the value's type
         as a letter (n number, f flag, l list, a alarm, b button, t text,
-        c counter, d date, D device, C command), then w when the device
+        T time, d date, D device, C command), then w when the device
         marks it writeable, e when it broadcasts the value (eventable), g
         when it is greyed out, and - for each that is not.
 
@@ -361,7 +364,7 @@ class Tool:
             set: The value to write; quoted when it has spaces: --set "Single device".
             reset: Write the value's default instead.
             force: Send it even if the device marks the value read-only or the value is out of range.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             cache: Keep a device's names and units in ~/.cache/mvconnect; --nocache reads them again and updates it.
             debug: Log every frame on the link, and say where each line comes from.
         """
@@ -511,7 +514,7 @@ class Tool:
             level: installer, distributor or service.
             password: The level's password, a number (asked for when not given).
             status: Only show the level each device is logged in at.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.login, debug)
@@ -548,7 +551,7 @@ class Tool:
         """Log out on every device on the bus: login level 0, as MasterAdjust's Logout button sends.
 
         Args:
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.logout, debug)
@@ -614,7 +617,7 @@ class Tool:
 
         Args:
             filter: Only frames to or from these devices, comma separated, each an address, name or type.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link, and say where each line comes from.
         """
         start(self.monitor, debug)
@@ -631,7 +634,7 @@ class Tool:
                 with show_progress("Identifying", "devices") as progress:
                     devices = system.devices(timeout=timeout, progress=progress)
                 names = {d.address: f"{d.kind} {d.name}" for d in devices}
-                names.setdefault(HOST_ADDRESS, "USB Link")
+                names.setdefault(system.host, "USB Link")
                 wanted = self._filter(system, filter, timeout)
                 if wanted:
                     logger.info("only " + ", ".join(f"{a} {names.get(a, '')}".rstrip() for a in sorted(wanted)))

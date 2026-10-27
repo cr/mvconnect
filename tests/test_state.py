@@ -1,5 +1,6 @@
 """The server's bus state: the open link with its devices identified, served to the commands it runs."""
 
+import logging
 import tempfile
 import threading
 import time
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import pytest
 import test_pages
-from expect import has, line_with, mentions
+from expect import has, line_with, logged, mentions
 from test_pages import CFG_ITEMS, COUNTS, SHUNT, VALUES, FakeShunt
 
 from mvconnect import state as st
@@ -101,6 +102,8 @@ def test_the_devices_are_identified_once(served):
         assert system.read_texts(device, table, [0, 7]) == {7: "MSH House Bank"}
         assert system.write_text(device, table, 7, "MSH Bow") == "MSH Bow"
         bus.write_string(SHUNT, 219, "MSH House Bank")
+        assert system.name_writer(device, table, 7) is True  # the fake echoes the frame to index 8
+        assert system.host == bus.host  # the server's own address on the bus
         assert version_reads(bus) == versions
         assert system.resolve_value(device, "battery type", "config")[1].index == 2
     finally:
@@ -592,3 +595,54 @@ def test_a_closed_connection_is_a_link_error_for_a_page_read_too(served):
     system.close()
     with pytest.raises(LinkError, match=mentions("closed")):
         system.tables(device, [PAGE_BY_NAME["config"]])
+
+
+class Replugged(FakeShunt):
+    """A fake link that fails *refusals* times to open again, then is back."""
+
+    def __init__(self, refusals=0):
+        super().__init__()
+        self.opens = 0
+        self.refusals = refusals
+        self.failure = None
+
+    def open(self, listener):
+        self.opens += 1
+        if self.opens > 1 and self.refusals:
+            self.refusals -= 1
+            raise LinkError("no MasterBus USB Link found")
+        self.failure = None
+        return super().open(listener)
+
+
+def test_a_lost_link_is_opened_again_and_the_bus_enumerated(short_path, caplog):
+    bus = MasterBus(Replugged(refusals=2), reply_timeout=0.02, retries=0).open()
+    system = System(bus, use_cache=False)
+    system.devices(0.02)
+    server = st.StateServer(system, short_path / "state.sock", timeout=0.02, reopen=0.05)
+    server.bind()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    client = st.connect(server.path)
+    try:
+        caplog.set_level(logging.INFO, logger="mvconnect.state")
+        before = enumerations(bus)
+        bus.link.failure = "read from MasterBus USB Link failed: device gone"
+        deadline = time.monotonic() + 3
+        while not server.lost and time.monotonic() < deadline:
+            time.sleep(0.01)
+        with pytest.raises(LinkError, match=mentions("lost", "device gone")):
+            client.devices()
+        while bus.link.opens < 4 and time.monotonic() < deadline:  # two refusals, then opened
+            time.sleep(0.01)
+        while server.lost and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert bus.link.opens == 4 and bus.link.failure is None and not server.lost
+        assert enumerations(bus) > before  # the bus may have changed meanwhile
+        assert [d.product_name for d in client.devices()] == ["MSH House Bank"]  # served again
+        assert logged(caplog, "ERROR", "lost") and logged(caplog, "INFO", "back")
+    finally:
+        client.close()
+        server.stop()
+        thread.join(5)
+        bus.close()

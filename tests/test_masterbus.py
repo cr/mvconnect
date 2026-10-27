@@ -6,6 +6,7 @@ import pytest
 from expect import logged, mentions
 
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_REPLY, KIND_REQUEST, Address, Frame
+from mvconnect.hidlink import LinkInfo
 from mvconnect.masterbus import HOST_ADDRESS, AnnounceInfo, MasterBus
 
 # Announcements captured on a live bus
@@ -302,3 +303,65 @@ def test_the_first_line_about_a_signal_is_a_warning_and_the_rest_info(caplog):
     winding_down(e.value, "wound down, exiting with status 130")
     levels = [(r.levelname, r.getMessage().split(": ")[1][:20]) for r in caplog.records if "Ctrl-C" in r.getMessage()]
     assert [level for level, _ in levels] == ["WARNING", "INFO", "INFO"], levels
+
+
+def test_host_address_follows_the_link_serial():
+    from mvconnect.masterbus import host_address
+    assert host_address("F226E0144") == Address(0x14, 0x30450)  # year 2 & 3, week 26, number 144, groups 207
+    assert host_address("K712Q2000", "77030500") == Address(0x14, 0x3FF90)  # year 7 & 3 = 3, week 12, groups 607
+    assert host_address("FO26E0144") == host_address("F226E0144")  # O stands for 10, and 10 & 3 == 2 & 3
+    for bad in ("", "F226E014", "F226E01441", "FX26E0144", "F2A6E0144", "F226E01x1"):
+        assert host_address(bad) == HOST_ADDRESS
+    assert host_address("F226E0144", "abc") == HOST_ADDRESS
+
+
+def test_the_bus_takes_its_address_from_the_link():
+    class LinkWithSerial(FakeLink):
+        info = LinkInfo(b"/dev/hidraw0", "F226E0144", "MasterBus USB Link", "Mastervolt")
+
+    bus = MasterBus(LinkWithSerial(), reply_timeout=0.05).open()
+    bus.enumerate(timeout=0.05)
+    assert bus.link.sent[0] == Frame(KIND_ENUMERATE, Address(0x14, 0x30450))
+    given = MasterBus(LinkWithSerial(), host=Address(0x14, 0x7), reply_timeout=0.05).open()
+    assert given.host == Address(0x14, 0x7)
+    assert MasterBus(FakeLink(), reply_timeout=0.05).open().host == HOST_ADDRESS  # a link without a serial
+
+
+
+class SlowAnnouncers:
+    """A link whose devices announce themselves *late* seconds apart, the first at once."""
+
+    def __init__(self, late, count):
+        self.late, self.count = late, count
+        self.listener = None
+        self.sent = []
+
+    def open(self, listener):
+        self.listener = listener
+        return self
+
+    def close(self):
+        pass
+
+    def send(self, *frames, timeout=1.0):
+        import threading
+        self.sent.extend(frames)
+        for n in range(self.count):
+            frame = Frame(KIND_ANNOUNCE, Address(0x1B, 0x0CAD0 + n), bytes([0x1B, 0xD0 + n, 0xCA, 0, 0, 2, 0, 0]))
+            threading.Timer(n * self.late, self.listener, [frame]).start()
+
+
+def test_enumerate_listens_on_while_devices_keep_appearing():
+    # Margins of tenths of a second, since a busy test machine fires a timer late.
+    bus = MasterBus(SlowAnnouncers(0.3, 3), reply_timeout=0.05).open()
+    # the second and third announce after the window, each well within the settle time of the one before
+    assert len(bus.enumerate(timeout=0.05, settle=1.0)) == 3
+    # with a short settle time, the window ends long before the second announces
+    assert len(MasterBus(SlowAnnouncers(0.6, 3), reply_timeout=0.05).open().enumerate(timeout=0.05, settle=0.05)) == 1
+
+
+def test_enumerate_ends_at_the_window_when_nothing_new_appears():
+    bus = MasterBus(SlowAnnouncers(0.0, 1), reply_timeout=0.05).open()
+    started = time.monotonic()
+    assert len(bus.enumerate(timeout=0.5, settle=0.1)) == 1
+    assert 0.45 <= time.monotonic() - started < 1.5  # the settle time ran out inside the window, which did not grow

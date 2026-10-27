@@ -61,14 +61,20 @@ class StateServer:
 
     Create one serving *system* at *path* (socket_path() by default), enumerating the bus again every
     *re_enumerate* seconds so that a device plugged in later appears, and listening *timeout* seconds for
-    announcements. The devices are identified once, so that a command skips the listen window.
+    announcements. The devices are identified once, so that a command skips the listen window. A link that
+    fails under the server, unplugged say, is looked for every *reopen* seconds and opened again; a request
+    meanwhile is a LinkError that says the link is lost.
     """
 
-    def __init__(self, system: System, path: Path | None = None, re_enumerate: float = 300.0, timeout: float = 1.5):
+    def __init__(self, system: System, path: Path | None = None, re_enumerate: float = 300.0, timeout: float = 1.5,
+                 reopen: float = 2.0):
         self.system = system
         self.path = path or socket_path()
         self.re_enumerate = re_enumerate
         self.timeout = timeout
+        self.reopen = reopen
+        self.lost: str | None = None  # why the link is lost, while it is
+        self._looked = 0.0  # when the lost link was last looked for
         self.lock = threading.Lock()  # the bus takes one conversation at a time
         self.listener: socket.socket | None = None
         self._stop = threading.Event()
@@ -99,6 +105,7 @@ class StateServer:
         clients: list[tuple[threading.Thread, socket.socket]] = []
         try:
             while not self._stop.is_set():
+                self._mind_link()
                 if time.monotonic() - enumerated >= self.re_enumerate:
                     self._enumerate_again()
                     enumerated = time.monotonic()
@@ -157,6 +164,30 @@ class StateServer:
         with self.lock:
             self.system.bus.close()
         logger.info("the server has ended: its link is closed")
+
+    def _mind_link(self) -> None:
+        """Notice a link that failed under its reader, and open it again once it can be.
+
+        A lost link is looked for every self.reopen seconds. Back, the bus is enumerated again: it may have
+        changed meanwhile.
+        """
+        failure = getattr(self.system.bus.link, "failure", None)
+        if failure and not self.lost:
+            self.lost = failure
+            self._looked = time.monotonic()
+            logger.error(f"bus state: the link is lost ({failure}); looking for it every {self.reopen:g} s")
+        if not self.lost or time.monotonic() - self._looked < self.reopen:
+            return
+        self._looked = time.monotonic()
+        with self.lock:
+            try:
+                self.system.bus.reopen()
+            except (LinkError, OSError) as e:  # not found yet, or its device node not closable or openable
+                logger.debug(f"bus state: the link is still lost: {e}")
+                return
+        self.lost = None
+        logger.info("bus state: the link is back")
+        self._enumerate_again()
 
     def _enumerate_again(self) -> None:
         try:
@@ -227,12 +258,18 @@ class StateServer:
     def handle(self, method: str, p: dict) -> Any:
         """Carry out one request, *method* with its parameters *p*, on the system.
 
-        Return the result as plain values for JSON. Raise ValueError for an unknown method.
+        Return the result as plain values for JSON. Raise LinkError while the link is lost, and ValueError for
+        an unknown method.
         """
+        lost = self.lost or getattr(self.system.bus.link, "failure", None)  # failed, if not yet noticed
+        if lost:
+            raise LinkError(f"the link is lost ({lost}); the server opens it again once it is back")
         s = self.system
         if method == "devices":
             return [encode_device(d) for d in s.devices(float(p.get("timeout", self.timeout)),
                                                         refresh=bool(p.get("refresh")))]
+        if method == "host":
+            return str(s.host)
         device = decode_device(p["device"])
         if method == "login_level":
             return s.login_level(device)
@@ -257,6 +294,8 @@ class StateServer:
             return s.write_value(device, table, int(p["index"]), float(p["value"]))
         if method == "write_text":
             return s.write_text(device, table, int(p["index"]), str(p["text"]))
+        if method == "name_writer":
+            return s.name_writer(device, table, int(p["index"]))
         raise ValueError(f"unknown method {method!r}")
 
 
@@ -289,10 +328,10 @@ class StateSystem(System):
     """A System whose bus conversations go to the server's state; everything else runs here.
 
     Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
-    methods that talk to the bus (devices, traffic, login_level, login, tables, read_values, read_options,
-    read_text, write_value, write_text) send a request to the server instead and return what it
-    answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
-    there. listen() is not served: the server's traffic comes through traffic().
+    methods that talk to the bus (devices, traffic, host, login_level, login, tables, read_values,
+    read_options, read_text, write_value, write_text, name_writer) send a request to the server instead and
+    return what it answers. They take no *progress* to report: the server reads a page in one request, whose
+    progress stays there. listen() is not served: the server's traffic comes through traffic().
     """
 
     def __init__(self, sock: socket.socket, path: Path, refresh: bool = False):
@@ -448,6 +487,16 @@ class StateSystem(System):
         """Ask the server; see System.write_text()."""
         return str(self.call("write_text", device=encode_device(device), page=table.page.name, index=index,
                              text=text))
+
+    @property
+    def host(self) -> Address:
+        """Ask the server; see System.host."""
+        return Address.parse(str(self.call("host")))
+
+    def name_writer(self, device: Device, table: PageTable, index: int) -> bool | None:
+        """Ask the server; see System.name_writer()."""
+        named = self.call("name_writer", device=encode_device(device), page=table.page.name, index=index)
+        return None if named is None else bool(named)
 
 
 def connect(path: Path, timeout: float | None = None, refresh: bool = False) -> StateSystem:

@@ -39,13 +39,35 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 
 from mvconnect.frame import KIND_ANNOUNCE, KIND_ENUMERATE, KIND_NA, KIND_REPLY, KIND_REQUEST, Address, Frame
-from mvconnect.hidlink import FrameQueue, HidLink
+from mvconnect.hidlink import FrameQueue, HidLink, LinkInfo
 
 logger = logging.getLogger(__name__)
 
 # This computer's address on the bus: the high field 0x14, which MasterAdjust's frames carry too, and a low
 # field of 0x1234.
 HOST_ADDRESS = Address(0x14, 0x1234)
+LINK_PRODUCT = "77030100"  # the product number of the MasterBus USB Link
+_YEAR_LETTERS = {"O": 10, "N": 11, "D": 12}  # the letters that stand for a year in a serial number
+
+
+def host_address(serial: str, product: str = LINK_PRODUCT) -> Address:
+    """Return the address this computer takes on the bus through the link with the *serial* number.
+
+    The high field is 0x14. The low field is computed from the serial number, nine characters of the form
+    'LYWWLNNNN', and the link's *product* number the way a device computes its own, so that two links get two
+    addresses. Return HOST_ADDRESS if *serial* is not of that form.
+    """
+    # As another MasterBus implementation documents it; it reproduces the address of every device on my bus
+    # from its serial and product numbers.
+    if len(serial) != 9 or not (serial[2:4].isdigit() and serial[5:9].isdigit() and product.isdigit()):
+        return HOST_ADDRESS
+    year = _YEAR_LETTERS.get(serial[1].upper(), int(serial[1]) if serial[1].isdigit() else None)
+    if year is None:
+        return HOST_ADDRESS
+    week, number = int(serial[2:4]), int(serial[5:9])
+    groups = sum(int(product[max(0, i - 3):i]) for i in range(len(product), 0, -3))  # 3-digit groups, from the right
+    return Address(HOST_ADDRESS.hi, (number + (week + 32 * (year & 3)) * 2048 + 64 * groups) & 0x3FFFF)
+
 
 class Command(enum.IntEnum):
     """What a request (KIND_REQUEST) asks for: its first data byte."""
@@ -206,7 +228,8 @@ class NotAvailable(TimeoutError):
 class Device:
     """A device on the bus.
 
-    It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
+    It holds its *address*; the four *info* bytes of its announcement, of which only the flash-mode bit is
+    understood (see flash_mode); its
     *product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
     '<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
     address and the info bytes is filled in by MasterBus.identify().
@@ -269,24 +292,38 @@ class MasterBus:
     """A MasterBus reached through one link.
 
     Create one on *link*, a HidLink (the first link found, by default), with *host* as this computer's
-    address (HOST_ADDRESS by default), waiting *reply_timeout* seconds for each reply (0.3 by default) and
-    re-sending a request *retries* times (2 by default) before giving up. Every method that sends raises
-    LinkError once the link has failed.
+    address (by default the one host_address() computes from the link's serial number when it is opened, or
+    HOST_ADDRESS), waiting *reply_timeout* seconds for each reply (0.3 by default) and re-sending a request
+    *retries* times (2 by default) before giving up. Every method that sends raises LinkError once the link
+    has failed.
     """
 
-    def __init__(self, link: HidLink | None = None, host: Address = HOST_ADDRESS, reply_timeout: float = 0.3,
+    def __init__(self, link: HidLink | None = None, host: Address | None = None, reply_timeout: float = 0.3,
                  retries: int = 2):
         self.link = link or HidLink()
-        self.host = host
+        self._host = host
         self.reply_timeout = reply_timeout
         self.retries = retries
         self._queue = FrameQueue()
         self._listening = 0  # conversations waiting for frames: only while one is are frames queued
         self._taps: list[Callable[[Frame, bool], None]] = []
 
+    @property
+    def host(self) -> Address:
+        """Return this computer's address on the bus: the one given, or else the one open() found."""
+        return self._host or HOST_ADDRESS
+
     def open(self) -> MasterBus:
-        """Open the link and return the bus."""
+        """Open the link and return the bus.
+
+        Without a host address given, the bus takes the one host_address() computes from the link's serial
+        number, where the link says one.
+        """
         self.link.open(self._receive)
+        info = getattr(self.link, "info", None)  # a HidLink's, once open; a stand-in for a link may have none
+        if self._host is None and isinstance(info, LinkInfo) and info.serial:
+            self._host = host_address(info.serial)
+            logger.debug(f"this computer's address is {self._host}, from the link's serial number")
         return self
 
     def _receive(self, frame: Frame) -> None:
@@ -338,6 +375,14 @@ class MasterBus:
         """Close the link."""
         self.link.close()
 
+    def reopen(self) -> MasterBus:
+        """Close the link and open it again, as after it was unplugged; return the bus.
+
+        Raise LinkError while the link cannot be opened. The address open() found is kept.
+        """
+        self.link.close()
+        return self.open()
+
     def __enter__(self) -> MasterBus:
         return self.open()
 
@@ -347,41 +392,50 @@ class MasterBus:
 
     # -- discovery
 
-    def enumerate(self, timeout: float = 1.5) -> list[Device]:
+    def enumerate(self, timeout: float = 1.5, settle: float = 1.0) -> list[Device]:
         """Ask every device to announce itself and return those that did.
 
-        Return the devices that announced themselves within *timeout* seconds (1.5 by default), in address
-        order, each a Device with its address and info bytes only. An announcement that does not parse is
-        logged and left out.
+        Listen *timeout* seconds (1.5 by default) for announcements, and longer while devices keep appearing:
+        until *settle* seconds (1.0 by default) have passed since the last new device announced itself, so
+        that a slow one is not the last heard. Return the devices in address order, each a Device with its
+        address and info bytes only. An announcement that does not parse is logged and left out.
         """
         logger.info("enumerating the bus")
         found: dict[Address, Device] = {}
+        deadline = time.monotonic() + timeout
         with self._conversation():
             self.send(Frame(KIND_ENUMERATE, self.host))
-            for frame in self._queue.until(time.monotonic() + timeout):
-                if frame.kind != KIND_ANNOUNCE:
-                    continue
-                try:
-                    ann = AnnounceInfo.parse(frame.data)
-                except ValueError as e:
-                    logger.warning(f"ignoring announcement from {frame.address}: {e}")
-                    continue
-                if ann.address != frame.address:
-                    logger.warning(f"announcement from {frame.address} names {ann.address}")
-                if ann.address not in found:
-                    found[ann.address] = Device(ann.address, info=ann.info)
-                    logger.debug(f"device {ann.address} info {ann.info.hex(' ')}")
+            while time.monotonic() < deadline:  # moved on by every new device, so until() is entered again
+                for frame in self._queue.until(deadline):
+                    device = self._announced(frame)
+                    if device is not None and device.address not in found:
+                        found[device.address] = device
+                        deadline = max(deadline, time.monotonic() + settle)
         logger.info(f"{len(found)} devices announced themselves")
         reports = getattr(self.link, "reports_in", None)  # a HidLink counts them; another link may not
         if not found and reports is not None:
-            link = self.link
             if reports == 0:
                 logger.debug("the link sent nothing at all: is it plugged into a powered MasterBus network, "
                              "and is this the right HID interface?")
             else:
-                logger.debug(f"the link sent {link.reports_in} reports with {link.frames_in} frames, none an "
+                logger.debug(f"the link sent {reports} reports with {self.link.frames_in} frames, none an "
                              "announcement: is the MasterBus network powered, and the link's bus cable connected?")
         return [found[a] for a in sorted(found)]
+
+    @staticmethod
+    def _announced(frame: Frame) -> Device | None:
+        """Return the Device *frame* announces, or None for any other frame or one that does not parse."""
+        if frame.kind != KIND_ANNOUNCE:
+            return None
+        try:
+            ann = AnnounceInfo.parse(frame.data)
+        except ValueError as e:
+            logger.warning(f"ignoring announcement from {frame.address}: {e}")
+            return None
+        if ann.address != frame.address:
+            logger.warning(f"announcement from {frame.address} names {ann.address}")
+        logger.debug(f"device {ann.address} info {ann.info.hex(' ')}")
+        return Device(ann.address, info=ann.info)
 
     # -- requests
 
@@ -437,8 +491,8 @@ class MasterBus:
                     retries: int | None = None) -> str:
         """Return string *string_id* of the device at *address*.
 
-        The string is read four characters per round trip, at most 64 of them, up to its first NUL or a chunk
-        shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
+        The string is read four characters per round trip, in at most 64 round trips, up to its first NUL or a
+        chunk shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
         decode replaced. *retries* is passed to request(). Raise TimeoutError, or NotAvailable, as request()
         does.
         """

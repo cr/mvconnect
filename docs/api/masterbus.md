@@ -32,6 +32,26 @@ Requests by their first data byte, the Command:
 
 #### HOST\_ADDRESS
 
+<a id="mvconnect.masterbus.LINK_PRODUCT"></a>
+
+#### LINK\_PRODUCT
+
+the product number of the MasterBus USB Link
+
+<a id="mvconnect.masterbus.host_address"></a>
+
+#### host\_address
+
+```python
+def host_address(serial: str, product: str = LINK_PRODUCT) -> Address
+```
+
+Return the address this computer takes on the bus through the link with the *serial* number.
+
+The high field is 0x14. The low field is computed from the serial number, nine characters of the form
+'LYWWLNNNN', and the link's *product* number the way a device computes its own, so that two links get two
+addresses. Return HOST_ADDRESS if *serial* is not of that form.
+
 <a id="mvconnect.masterbus.Command"></a>
 
 ## Command
@@ -260,7 +280,8 @@ class Device()
 
 A device on the bus.
 
-It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
+It holds its *address*; the four *info* bytes of its announcement, of which only the flash-mode bit is
+understood (see flash_mode); its
 *product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
 '<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
 address and the info bytes is filled in by MasterBus.identify().
@@ -391,9 +412,21 @@ class MasterBus()
 A MasterBus reached through one link.
 
 Create one on *link*, a HidLink (the first link found, by default), with *host* as this computer's
-address (HOST_ADDRESS by default), waiting *reply_timeout* seconds for each reply (0.3 by default) and
-re-sending a request *retries* times (2 by default) before giving up. Every method that sends raises
-LinkError once the link has failed.
+address (by default the one host_address() computes from the link's serial number when it is opened, or
+HOST_ADDRESS), waiting *reply_timeout* seconds for each reply (0.3 by default) and re-sending a request
+*retries* times (2 by default) before giving up. Every method that sends raises LinkError once the link
+has failed.
+
+<a id="mvconnect.masterbus.MasterBus.host"></a>
+
+#### host
+
+```python
+@property
+def host() -> Address
+```
+
+Return this computer's address on the bus: the one given, or else the one open() found.
 
 <a id="mvconnect.masterbus.MasterBus.open"></a>
 
@@ -404,6 +437,9 @@ def open() -> MasterBus
 ```
 
 Open the link and return the bus.
+
+Without a host address given, the bus takes the one host_address() computes from the link's serial
+number, where the link says one.
 
 <a id="mvconnect.masterbus.MasterBus.send"></a>
 
@@ -441,19 +477,32 @@ def close() -> None
 
 Close the link.
 
+<a id="mvconnect.masterbus.MasterBus.reopen"></a>
+
+#### reopen
+
+```python
+def reopen() -> MasterBus
+```
+
+Close the link and open it again, as after it was unplugged; return the bus.
+
+Raise LinkError while the link cannot be opened. The address open() found is kept.
+
 <a id="mvconnect.masterbus.MasterBus.enumerate"></a>
 
 #### enumerate
 
 ```python
-def enumerate(timeout: float = 1.5) -> list[Device]
+def enumerate(timeout: float = 1.5, settle: float = 1.0) -> list[Device]
 ```
 
 Ask every device to announce itself and return those that did.
 
-Return the devices that announced themselves within *timeout* seconds (1.5 by default), in address
-order, each a Device with its address and info bytes only. An announcement that does not parse is
-logged and left out.
+Listen *timeout* seconds (1.5 by default) for announcements, and longer while devices keep appearing:
+until *settle* seconds (1.0 by default) have passed since the last new device announced itself, so
+that a slow one is not the last heard. Return the devices in address order, each a Device with its
+address and info bytes only. An announcement that does not parse is logged and left out.
 
 <a id="mvconnect.masterbus.MasterBus.request"></a>
 
@@ -508,8 +557,8 @@ def read_string(address: Address,
 
 Return string *string_id* of the device at *address*.
 
-The string is read four characters per round trip, at most 64 of them, up to its first NUL or a chunk
-shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
+The string is read four characters per round trip, in at most 64 round trips, up to its first NUL or a
+chunk shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
 decode replaced. *retries* is passed to request(). Raise TimeoutError, or NotAvailable, as request()
 does.
 

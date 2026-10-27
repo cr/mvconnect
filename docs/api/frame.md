@@ -10,7 +10,8 @@ One HID report of 64 payload bytes holds up to four 14-byte records:
     payload[1+14*i]   record i
     payload[58]       in reports from the link: free transmit slots in the link
     payload[59]       in reports from the link: status flags
-    payload[60+i]     in reports from the link: low timestamp byte of record i
+    payload[60+i]     in reports from the link: low timestamp byte of record i,
+                      whose own timestamp byte is then the high one
 
 A record is a big-endian 32-bit id word, a data length, 8 data bytes and a
 timestamp byte. The id word packs a 6-bit kind, a 5-bit high address field and
@@ -113,7 +114,7 @@ class Frame()
 One CAN record.
 
 It holds its 6-bit *kind*, the *address* of the device it is for or from, up to 8 *data* bytes and a
-*timestamp*, one byte in a record and two in a report from the link (unpack_report() adds the high byte).
+*timestamp*, one byte in a record and two in a report from the link (unpack_report() adds the low byte).
 Raise ValueError if the kind or the data length is out of range.
 
 <a id="mvconnect.frame.Frame.kind"></a>
@@ -235,7 +236,7 @@ def unpack_report(payload: bytes) -> Report
 
 Return the Report decoded from *payload*, the 64 payload bytes of an input report.
 
-Slots beyond the record count hold stale data and are ignored. Each frame's timestamp gets its high byte
-from the report. Raise ValueError if the payload is short, the count exceeds 4 or a record's data length
-exceeds 8.
+Slots beyond the record count hold stale data and are ignored. Each frame's timestamp gets its low byte
+from the report, the record's own byte becoming the high one. Raise ValueError if the payload is short,
+the count exceeds 4 or a record's data length exceeds 8.
 
