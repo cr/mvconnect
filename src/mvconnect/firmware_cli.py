@@ -44,7 +44,7 @@ class Firmware_:
 
         Args:
             library: Directory of firmware .hex files.
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link.
         """
         ui = self._ui
@@ -156,9 +156,8 @@ class Firmware_:
         try:
             url = bundle_url()
             logger.info(f"bundle: {url}")
-            if force:
-                for stale in directory.glob(url.rsplit("/", 1)[-1] + ".json"):
-                    stale.unlink()
+            if force:  # without its stamp, the bundle is fetched whatever the server says of it
+                (directory / (url.rsplit("/", 1)[-1] + ".json")).unlink(missing_ok=True)
             with ui.show_progress("Downloading", "bytes") as progress:
                 got = fetch(url, directory, progress=progress)
             if password is None:
@@ -197,7 +196,7 @@ class Firmware_:
             really: Run the semi-live rehearsal: real flash-mode handshake and exit, logged programming.
             erase_size: Erase-block size for the rehearsal's frame layout (decimal or 0x..); required with --really.
             fill: Byte sent for image gaps in the rehearsal (decimal or 0x.., default 0xFF).
-            timeout: How many seconds to wait for devices to announce themselves.
+            timeout: How many seconds to wait for devices to announce themselves; longer while they keep appearing.
             debug: Log every frame on the link (and every would-send data frame in a rehearsal).
         """
         from mvconnect.preflight import choose, preflight

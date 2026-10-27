@@ -242,7 +242,7 @@ class Value:
         """
         no_minimum = self.minimum is None or self.minimum != self.minimum
         return (not self.name and self.writeable and no_minimum
-                and self.maximum == self.step == self.default == 65535)
+                and self.maximum == self.step == self.default == NO_DEFAULT)
 
     @property
     def writer(self) -> str:
@@ -704,7 +704,6 @@ class PageReader:
         The list is empty where the device lists none. Raise TimeoutError if the device does not answer.
         """
         kind = page.info
-        assert kind is not None
         index = value.index
         maximum = value.maximum if value.visualization == VIS_LIST else self.attr_float(kind, Attribute.MAXIMUM, index)
         counted = maximum is not None and 0 < maximum < 256 and maximum == int(maximum)

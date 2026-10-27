@@ -611,12 +611,15 @@ class System:
         """Read *value* of *table*'s page on *device* back after a write and return what it holds.
 
         Return *wanted* as soon as a read shows it, reading up to READ_BACKS times, READ_BACK_PAUSE seconds
-        apart, since a relay takes its time to switch; otherwise what the last read holds.
+        apart, since a relay takes its time to switch; otherwise what the last read holds. A read the device
+        does not answer ends it: a relay that is still switching shows its old state, not silence.
         """
         for n in range(READ_BACKS):
             if n:
                 time.sleep(READ_BACK_PAUSE)
             after = self.read_values(device, table, [value.index])[value.index]
+            if after is None:
+                break
             if self._holds(value, after, wanted):
                 if n:
                     logger.debug(f"{self._label(device, table, value)}: shows {value.format(after)} after "

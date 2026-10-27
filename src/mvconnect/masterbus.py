@@ -228,7 +228,8 @@ class NotAvailable(TimeoutError):
 class Device:
     """A device on the bus.
 
-    It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
+    It holds its *address*; the four *info* bytes of its announcement, of which only the flash-mode bit is
+    understood (see flash_mode); its
     *product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
     '<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
     address and the info bytes is filled in by MasterBus.identify().
@@ -413,12 +414,11 @@ class MasterBus:
         logger.info(f"{len(found)} devices announced themselves")
         reports = getattr(self.link, "reports_in", None)  # a HidLink counts them; another link may not
         if not found and reports is not None:
-            link = self.link
             if reports == 0:
                 logger.debug("the link sent nothing at all: is it plugged into a powered MasterBus network, "
                              "and is this the right HID interface?")
             else:
-                logger.debug(f"the link sent {link.reports_in} reports with {link.frames_in} frames, none an "
+                logger.debug(f"the link sent {reports} reports with {self.link.frames_in} frames, none an "
                              "announcement: is the MasterBus network powered, and the link's bus cable connected?")
         return [found[a] for a in sorted(found)]
 
@@ -491,8 +491,8 @@ class MasterBus:
                     retries: int | None = None) -> str:
         """Return string *string_id* of the device at *address*.
 
-        The string is read four characters per round trip, at most 64 of them, up to its first NUL or a chunk
-        shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
+        The string is read four characters per round trip, in at most 64 round trips, up to its first NUL or a
+        chunk shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
         decode replaced. *retries* is passed to request(). Raise TimeoutError, or NotAvailable, as request()
         does.
         """

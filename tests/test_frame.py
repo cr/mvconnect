@@ -181,7 +181,7 @@ def test_frame_limits():
 def test_unpack_captured_report():
     report = unpack_report(CAPTURED)
     assert len(report.frames) == 1
-    assert report.frames[0] == Frame(0x30, Address(0x1B, 0x0CAD9), bytes.fromhex("0100"), timestamp=0xFF)
+    assert report.frames[0] == Frame(0x30, Address(0x1B, 0x0CAD9), bytes.fromhex("0100"), timestamp=0xFF00)
     assert report.credits == 18
     assert report.flags == 0
 
@@ -189,7 +189,7 @@ def test_unpack_captured_report():
 def test_unpack_report_extended_timestamp():
     payload = bytearray(CAPTURED)
     payload[60] = 0x12
-    assert unpack_report(bytes(payload)).frames[0].timestamp == 0x12FF
+    assert unpack_report(bytes(payload)).frames[0].timestamp == 0xFF12  # the record's byte high, the report's low
 
 
 def test_unpack_report_count_limit():
@@ -250,6 +250,36 @@ def test_a_link_that_cannot_be_opened_is_one_concise_line(monkeypatch, caplog, p
         assert str(e.value) == f"cannot open the MasterBus USB Link at {path.decode()}: open failed"
         assert not hasattr(e.value, "hint")
     assert any("NOT write" in r.getMessage() for r in caplog.records if r.levelname == "DEBUG")  # the details
+
+
+def test_a_link_opened_again_has_every_slot_free(monkeypatch):
+    """Slots spent on frames the link never answered, as it was unplugged, are not held against it."""
+    from mvconnect import hidlink
+    from mvconnect.frame import MAX_RECORDS
+    from mvconnect.hidlink import HidLink, LinkInfo
+
+    class Device:
+        def open_path(self, path):
+            pass
+
+        def set_nonblocking(self, flag):
+            pass
+
+        def read(self, size, timeout_ms):
+            time.sleep(timeout_ms / 1000)
+            return []
+
+        def close(self):
+            pass
+    import time
+    monkeypatch.setattr(hidlink.hid, "device", Device)
+    link = HidLink(LinkInfo(b"/dev/link", "", "", ""))
+    link._credits = 0  # spent, and no report came to give them back
+    link.open(lambda frame: None)
+    try:
+        assert link._credits == MAX_RECORDS
+    finally:
+        link.close()
 
 
 def test_a_link_opened_again_is_found_again(monkeypatch):

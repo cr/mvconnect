@@ -256,7 +256,7 @@ def _value(index: int, name: str, width: int = 0) -> str:
 
 # The attribute column, coloured as eza colours a file's mode: the kind in the first place,
 # then one colour per permission-like flag, and dim dashes where a flag is off.
-_TYPE_STYLES = {"n": "", "f": "yellow", "l": "blue", "a": "red", "b": "magenta", "t": "cyan", "c": "dim",
+_TYPE_STYLES = {"n": "", "f": "yellow", "l": "blue", "a": "red", "b": "magenta", "t": "cyan", "T": "dim",
                 "d": "cyan", "D": "bold green", "C": "green", "?": "dim"}
 _FLAG_STYLES = {"w": "bold red", "e": "green", "g": "yellow"}
 

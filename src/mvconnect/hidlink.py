@@ -248,6 +248,8 @@ class HidLink:
             logger.debug(f"device strings or report descriptor not readable: {e}")
         self._listener = listener
         self.failure = None
+        with self._credits_changed:  # a link opened again has every slot free, whatever the last one spent
+            self._credits = MAX_RECORDS
         self._stop.clear()
         self._reader = threading.Thread(target=self._read_loop, name="mvconnect-hid-reader", daemon=True)
         self._reader.start()
@@ -287,7 +289,7 @@ class HidLink:
         if self._dev is None:
             raise LinkError("link is not open")
         if self.failure:  # unplugged, say: no reply could ever come, so say so instead of timing out
-            raise LinkError(f"{self.failure}; open the link again")
+            raise LinkError(f"{self.failure}; the link must be opened again")
         pending = list(frames)
         deadline = time.monotonic() + timeout
         while pending:

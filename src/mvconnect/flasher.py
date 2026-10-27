@@ -493,7 +493,7 @@ def rehearse_flash(bus: MasterBus, device: Device, firmware: Firmware, *, erase_
                          "take it out with nothing programmed. Flash it instead, or power-cycle it")
     logger.warning(f"REHEARSAL for {device.selector}: entering flash mode FOR REAL; the programming "
                    f"below is only logged, never sent — nothing is erased or written")
-    exit_bank = (p.blocks[-1][0] >> BANK_SHIFT) if p.blocks else 0
+    exit_bank = p.blocks[-1][0] >> BANK_SHIFT  # plan() never gives an empty plan
     stopped: BaseException | None = None  # what ended the rehearsal early, if anything
     try:  # from the handshake on: a reply lost after 0x84, or Ctrl-C there, leaves the device in flash mode
         enter_flash_mode(bus, device.address)  # never skipped: the device was just seen in its application

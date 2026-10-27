@@ -280,7 +280,8 @@ class Device()
 
 A device on the bus.
 
-It holds its *address*; the four *info* bytes of its announcement, whose meaning is not yet known; its
+It holds its *address*; the four *info* bytes of its announcement, of which only the flash-mode bit is
+understood (see flash_mode); its
 *product* number such as 77020100; its *serial* number; its *product_name* as the device reports it,
 '<type> <name>'; its hardware *revision*; and its firmware *version*, 'major.minor'. Everything but the
 address and the info bytes is filled in by MasterBus.identify().
@@ -556,8 +557,8 @@ def read_string(address: Address,
 
 Return string *string_id* of the device at *address*.
 
-The string is read four characters per round trip, at most 64 of them, up to its first NUL or a chunk
-shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
+The string is read four characters per round trip, in at most 64 round trips, up to its first NUL or a
+chunk shorter than four characters, and decoded with *encoding* (latin-1 by default), a character it cannot
 decode replaced. *retries* is passed to request(). Raise TimeoutError, or NotAvailable, as request()
 does.
 

@@ -1278,3 +1278,25 @@ def test_a_switch_reset_names_the_writer_as_its_write_does(switch, bus):
     VALUES[0x37][7] = 1.0
     written = system.write_default(device, table, flag)
     assert written.took and VALUES[0x37][7] == 0.0 and ADDRESS_FRAMES == [bytes([8, 0, 0x14, 0x34, 0x12, 0x00])]
+
+
+def test_a_read_back_the_device_does_not_answer_is_tried_once(config, bus, caplog):
+    import logging
+    system, device, table = config
+    asked = []  # the requests for value 0: a read (2 bytes) or the write (6)
+
+    def picked(f):
+        if f.kind == 0x37 and f.data[:2] == bytes([0, 0]):
+            asked.append(f.data)
+            return True
+        return False
+
+    def silent_after_the_write(kind, data):
+        wrote = any(len(a) == 6 for a in asked)
+        return (kind, data) if len(asked[-1]) == 6 or not wrote else None  # read before, write, then silence
+    answering(bus, silent_after_the_write, to=picked)
+    with caplog.at_level(logging.WARNING, logger="mvconnect.system"):
+        written = system.write(device, table, table.values[0], "24")
+    reads = [f for f in bus.link.sent if f.kind == 0x37 and f.data == bytes([0, 0])]
+    assert not written.took and len(reads) == 1 + 3  # once before; back once, with its two re-sends
+    assert len([r for r in caplog.records if has(r.getMessage(), "no answer")]) == 1

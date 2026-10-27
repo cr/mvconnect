@@ -258,10 +258,12 @@ class StateServer:
     def handle(self, method: str, p: dict) -> Any:
         """Carry out one request, *method* with its parameters *p*, on the system.
 
-        Return the result as plain values for JSON. Raise ValueError for an unknown method.
+        Return the result as plain values for JSON. Raise LinkError while the link is lost, and ValueError for
+        an unknown method.
         """
-        if self.lost:
-            raise LinkError(f"the link is lost ({self.lost}); the server opens it again once it is back")
+        lost = self.lost or getattr(self.system.bus.link, "failure", None)  # failed, if not yet noticed
+        if lost:
+            raise LinkError(f"the link is lost ({lost}); the server opens it again once it is back")
         s = self.system
         if method == "devices":
             return [encode_device(d) for d in s.devices(float(p.get("timeout", self.timeout)),
@@ -328,9 +330,8 @@ class StateSystem(System):
     Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
     methods that talk to the bus (devices, traffic, host, login_level, login, tables, read_values,
     read_options, read_text, write_value, write_text, name_writer) send a request to the server instead and
-    return what it
-    answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
-    there. listen() is not served: the server's traffic comes through traffic().
+    return what it answers. They take no *progress* to report: the server reads a page in one request, whose
+    progress stays there. listen() is not served: the server's traffic comes through traffic().
     """
 
     def __init__(self, sock: socket.socket, path: Path, refresh: bool = False):

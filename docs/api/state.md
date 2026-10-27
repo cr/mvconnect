@@ -131,7 +131,8 @@ def handle(method: str, p: dict) -> Any
 
 Carry out one request, *method* with its parameters *p*, on the system.
 
-Return the result as plain values for JSON. Raise ValueError for an unknown method.
+Return the result as plain values for JSON. Raise LinkError while the link is lost, and ValueError for
+an unknown method.
 
 <a id="mvconnect.state.start_in_thread"></a>
 
@@ -162,9 +163,8 @@ A System whose bus conversations go to the server's state; everything else runs 
 Create one on *sock*, connected to the server at *path*; connect() does. *refresh* is as for System. The
 methods that talk to the bus (devices, traffic, host, login_level, login, tables, read_values,
 read_options, read_text, write_value, write_text, name_writer) send a request to the server instead and
-return what it
-answers. They take no *progress* to report: the server reads a page in one request, whose progress stays
-there. listen() is not served: the server's traffic comes through traffic().
+return what it answers. They take no *progress* to report: the server reads a page in one request, whose
+progress stays there. listen() is not served: the server's traffic comes through traffic().
 
 <a id="mvconnect.state.StateSystem.listen"></a>
 
