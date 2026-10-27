@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mvconnect"
-version = "0.1.0"
+version = "0.2.0"
 description = "Talk to a Mastervolt MasterBus system through the MasterBus USB Link"
 readme = "README.md"
 requires-python = ">=3.11"
