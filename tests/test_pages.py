@@ -2,7 +2,6 @@
 
 import dataclasses
 import struct
-import time
 
 import pytest
 from expect import has, line_with, logged, mentions
@@ -504,6 +503,8 @@ def test_a_slow_switch_is_read_back_until_it_shows(switch, bus, monkeypatch):
     """A relay takes its time: the write is echoed, and the value shows the switch only a few reads later."""
     from mvconnect import system as sys_
     monkeypatch.setattr(sys_, "READ_BACK_PAUSE", 0.01)
+    pauses = []
+    monkeypatch.setattr(sys_.time, "sleep", pauses.append)  # Windows' clock is too coarse to time them
     system, device, table, button = switch
     reads = [0]
     asked = []  # the last request for value 7 picked: a read (2 bytes) or a write (6)
@@ -523,10 +524,9 @@ def test_a_slow_switch_is_read_back_until_it_shows(switch, bus, monkeypatch):
             VALUES[0x37][7] = 1.0
         return kind, data[:2] + struct.pack("<f", VALUES[0x37][7])
     answering(bus, slowly, to=picked)
-    started = time.monotonic()
     written = system.write(device, table, button, "on", timeout=0.02)
     assert written.took and not written.warnings and VALUES[0x37][7] == 1.0
-    assert reads[0] == 3 and time.monotonic() - started >= 0.01  # read once before, then twice back, a pause between
+    assert reads[0] == 3 and pauses == [0.01]  # read once before, then twice back, a pause between
 
 
 def test_a_device_value_is_written_as_its_entry_alone(config, bus):
