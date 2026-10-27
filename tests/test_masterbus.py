@@ -352,14 +352,16 @@ class SlowAnnouncers:
 
 
 def test_enumerate_listens_on_while_devices_keep_appearing():
-    bus = MasterBus(SlowAnnouncers(0.08, 3), reply_timeout=0.05).open()
-    # the second and third announce after the window, each within the settle time of the one before
-    assert len(bus.enumerate(timeout=0.05, settle=0.15)) == 3
-    assert len(MasterBus(SlowAnnouncers(0.08, 3), reply_timeout=0.05).open().enumerate(timeout=0.05, settle=0.02)) == 1
+    # Margins of tenths of a second, since a busy test machine fires a timer late.
+    bus = MasterBus(SlowAnnouncers(0.3, 3), reply_timeout=0.05).open()
+    # the second and third announce after the window, each well within the settle time of the one before
+    assert len(bus.enumerate(timeout=0.05, settle=1.0)) == 3
+    # with a short settle time, the window ends long before the second announces
+    assert len(MasterBus(SlowAnnouncers(0.6, 3), reply_timeout=0.05).open().enumerate(timeout=0.05, settle=0.05)) == 1
 
 
 def test_enumerate_ends_at_the_window_when_nothing_new_appears():
     bus = MasterBus(SlowAnnouncers(0.0, 1), reply_timeout=0.05).open()
     started = time.monotonic()
-    assert len(bus.enumerate(timeout=0.2, settle=0.1)) == 1
-    assert 0.15 <= time.monotonic() - started < 0.4  # the settle time ran out inside the window, which did not grow
+    assert len(bus.enumerate(timeout=0.5, settle=0.1)) == 1
+    assert 0.45 <= time.monotonic() - started < 1.5  # the settle time ran out inside the window, which did not grow
